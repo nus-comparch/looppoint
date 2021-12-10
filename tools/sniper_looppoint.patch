@@ -1,0 +1,433 @@
+--- /dev/null
++++ sniper/scripts/simuserroi.py
+@@ -0,0 +1,28 @@
++"""
++simuserroi.py
++
++run with: ./run-sniper -ggeneral/inst_mode_init=detailed -gperf_model/fast_forward/oneipc/include_memory_latency=true --pinplay-addr-trans --frontend-pc-control 0x7f1a6c5d20d3:100:0x7f1a6c5d20d3:100:0x7f1a6c5d20d3:100:1 -ssimuserroi --roi-script --trace-args="-forcepccountwarmupindetailed 1" 
++
++"""
++
++import sim
++
++SIM_USER_ROI = 0x0be0000f
++
++class SimUserROI:
++  def setup(self, args):
++    roiscript = sim.config.get_bool('general/roi_script')
++    if not roiscript:
++      print '[SimUserROI] ERROR: --roi-script is not set, but is required when using a start instruction count. Aborting'
++      sim.control.abort()
++      return
++    sim.util.register_command(SIM_USER_ROI, self.set_roi)
++
++  # Out-of-bound set-roi
++  def set_roi(self, cmd, arg):
++    if (arg == 0): # start
++      sim.control.set_roi(True)
++    elif (arg == 1): # stop
++      sim.control.set_roi(False)
++
++sim.util.register(SimUserROI())
+
+--- sniper/sift/recorder/globals.cc
++++ sniper/sift/recorder/globals.cc
+@@ -29,4 +29,5 @@ 
+ PINPLAY_ENGINE pinplay_engine;
+ #endif /* PINPLAY_SUPPORTED */
+ 
++CONTROLLER::CONTROL_MANAGER control_manager;
+ INT32 app_id;
+@@ -40,1 +41,2 @@
+ PIN_LOCK new_threadid_lock;
++PIN_LOCK output_lock;
+--- sniper/sift/recorder/globals.h
++++ sniper/sift/recorder/globals.h
+@@ -7,5 +7,5 @@
+ #ifdef PINPLAY_SUPPORTED
+ # include "pinplay.H"
+ #endif
+-
++#include "control_manager.H"
+ #include <unordered_map>
+@@ -46,4 +46,4 @@
+ extern PINPLAY_ENGINE pinplay_engine;
+ #endif /* PINPLAY_SUPPORTED */
+-
++extern CONTROLLER::CONTROL_MANAGER control_manager;
+ extern INT32 app_id;
+@@ -56,1 +56,2 @@
+ extern PIN_LOCK new_threadid_lock;
++extern PIN_LOCK output_lock;
+--- sniper/sift/recorder/sift_recorder.cc
++++ sniper/sift/recorder/sift_recorder.cc
+@@ -27,5 +27,7 @@
+ #include "sift_writer.h"
+ #include "sift_assert.h"
+ #include "pinboost_debug.h"
++#include "instlib.H"
++#include "../../include/sim_api.h"
+ 
+ VOID Fini(INT32 code, VOID *v)
+@@ -110,6 +112,50 @@
+    }
+ }
+ 
++INSTLIB::ICOUNT icount;
++
++VOID Handler(CONTROLLER::EVENT_TYPE ev, VOID * v, CONTEXT * ctxt, VOID * ip, THREADID tid, BOOL bcast)
++{
++    PIN_GetLock(&output_lock, tid+1);
++
++    std::cout << "[CONTROLLER] tid: " << tid << " ";
++    std::cout << "ip: "  << ip << " " << icount.Count() << " " ;
++
++    switch(ev)
++    {
++        case CONTROLLER::EVENT_START:
++            std::cout << "Start" << endl;
++            break;
++
++        case CONTROLLER::EVENT_STOP:
++            std::cout << "Stop" << endl;
++            break;
++
++
++        case CONTROLLER::EVENT_THREADID:
++            std::cout << "ThreadID" << endl;
++            break;
++
++        default:
++            break;
++    }
++    PIN_ReleaseLock(&output_lock);
++   
++    switch(ev)
++    {
++        case CONTROLLER::EVENT_START:
++            handleMagic(tid, ctxt, SIM_CMD_USER, 0x0be0000f, 0);
++            break;
++
++        case CONTROLLER::EVENT_STOP:
++            handleMagic(tid, ctxt, SIM_CMD_USER, 0x0be0000f, 1);
++            break;
++
++        default:
++            break;
++    }
++}
++
+ int main(int argc, char **argv)
+ {
+    if (PIN_Init(argc,argv))
+@@ -185,3 +231,6 @@
+    }
+ #endif
+-
++   control_manager.RegisterHandler(Handler, 0, FALSE);
++   control_manager.Activate();
++
++   icount.Activate();
+--- sniper/sift/recorder/recorder_base.cc
++++ sniper/sift/recorder/recorder_base.cc
+@@ -154,7 +154,8 @@
+ 
+    if (INS_IsMemoryRead (ins) || INS_IsMemoryWrite (ins))
+    {
+-      for (unsigned int i = 0; i < INS_MemoryOperandCount(ins); i++)
++      UINT32 max_op_count = std::min<UINT32>(INS_MemoryOperandCount(ins), Sift::MAX_DYNAMIC_ADDRESSES);
++      for (unsigned int i = 0; i < max_op_count; i++)
+       {
+          INS_InsertCall(ins, IPOINT_BEFORE,
+                AFUNPTR(handleMemory),
+@@ -164,6 +165,10 @@
+          num_addresses++;
+       }
+    }
++   if (INS_MemoryOperandCount(ins) > Sift::MAX_DYNAMIC_ADDRESSES)
++   {
++      std::cerr << "[SIFT_RECORDER] Unable to report all dynamic addresses (" << Sift::MAX_DYNAMIC_ADDRESSES << "/" << INS_MemoryOperandCount(ins) << ") for instruction 0x" << std::hex << INS_Address(ins) << std::dec << "\n";
++   }
+    sift_assert(num_addresses <= Sift::MAX_DYNAMIC_ADDRESSES);
+ 
+    return num_addresses;
+--- sniper/common/scheduler/scheduler_static.cc
++++ sniper/common/scheduler/scheduler_static.cc
+@@ -1,4 +1,5 @@
+ #include "scheduler_static.h"
++#include "thread_manager.h"
+ #include "core_manager.h"
+ #include "simulator.h"
+ #include "config.hpp"
+@@ -38,3 +39,32 @@
+ 
+    return core_id;
+ }
++
++bool SchedulerStatic::threadSetAffinity(thread_id_t calling_thread_id, thread_id_t thread_id, size_t cpusetsize, const cpu_set_t *mask)
++{
++   // We can't accept SetAffinitity requests with this scheduler. Silently ignore the request.
++   return true;
++}
++
++bool SchedulerStatic::threadGetAffinity(thread_id_t thread_id, size_t cpusetsize, cpu_set_t *mask)
++{
++   if (cpusetsize*8 < Sim()->getConfig()->getApplicationCores())
++   {
++      // Not enough space to return result
++      return false;
++   }
++
++   CPU_ZERO_S(cpusetsize, mask);
++
++   Core *core = Sim()->getThreadManager()->getThreadFromID(thread_id)->getCore();
++   if (core == NULL)
++   {
++      return false;
++   }
++
++   core_id_t core_id = core->getId();
++
++   CPU_SET_S(core_id, cpusetsize, mask);
++
++   return true;
++}
+--- sniper/common/scheduler/scheduler_static.h
++++ sniper/common/scheduler/scheduler_static.h
+@@ -11,6 +11,8 @@
+       SchedulerStatic(ThreadManager *thread_manager);
+ 
+       core_id_t threadCreate(thread_id_t);
++      virtual bool threadSetAffinity(thread_id_t calling_thread_id, thread_id_t thread_id, size_t cpusetsize, const cpu_set_t *mask) override;
++      virtual bool threadGetAffinity(thread_id_t thread_id, size_t cpusetsize, cpu_set_t *mask) override;
+ 
+    private:
+       std::vector<bool> m_core_mask;
+--- sniper/scripts/progresstrace.py
++++ sniper/scripts/progresstrace.py
+@@ -4,7 +4,8 @@
+   def setup(self, args):
+     self.last_ins = 0
+     self.last_time = time.time()
+-    sim.util.EveryIns(1000000, self.periodic, roi_only = False)
++    self.ninstrs = long(args or 1000000)
++    sim.util.EveryIns(self.ninstrs, self.periodic, roi_only = False)
+     self.sd = sim.util.StatsDelta()
+     self.stats = {
+       'time': self.sd.getter('barrier', 0, 'global_time'),
+--- sniper/common/system/barrier_sync_server.cc
++++ sniper/common/system/barrier_sync_server.cc
+@@ -27,7 +27,15 @@
+ {
+    try
+    {
+-      m_barrier_interval = SubsecondTime::NS() * (UInt64) Sim()->getCfg()->getInt("clock_skew_minimization/barrier/quantum");
++      auto quantum = Sim()->getCfg()->getInt("clock_skew_minimization/barrier/quantum");
++      if (quantum != 0)
++      {
++         m_barrier_interval = SubsecondTime::NS() * quantum;
++      }
++      else
++      {
++         m_barrier_interval = SubsecondTime::MaxTime();
++      }
+    }
+    catch(...)
+    {
+--- sniper/common/system/barrier_sync_server.h
++++ sniper/common/system/barrier_sync_server.h
+@@ -55,7 +55,7 @@
+       void release() { abortBarrier(); }
+       void advance();
+       void setFastForward(bool fastforward, SubsecondTime next_barrier_time = SubsecondTime::MaxTime());
+-      SubsecondTime getGlobalTime(bool upper_bound = false) { return upper_bound ? m_next_barrier_time : m_global_time; }
++      SubsecondTime getGlobalTime(bool upper_bound = false) { return m_barrier_interval == SubsecondTime::MaxTime() ? m_global_time : (upper_bound ? m_next_barrier_time : m_global_time); }
+       void setBarrierInterval(SubsecondTime barrier_interval) { m_barrier_interval = barrier_interval; }
+       SubsecondTime getBarrierInterval() const { return m_barrier_interval; }
+ 
+--- sniper/common/system/barrier_sync_client.cc
++++ sniper/common/system/barrier_sync_client.cc
+@@ -13,7 +13,15 @@
+ {
+    try
+    {
+-      m_barrier_interval = SubsecondTime::NS() * Sim()->getCfg()->getInt("clock_skew_minimization/barrier/quantum");
++      auto quantum = Sim()->getCfg()->getInt("clock_skew_minimization/barrier/quantum");
++      if (quantum != 0)
++      {
++         m_barrier_interval = SubsecondTime::NS() * quantum;
++      }
++      else
++      {
++         m_barrier_interval = SubsecondTime::MaxTime();
++      }
+    }
+    catch(...)
+    {
+--- sniper/config/base.cfg
++++ sniper/config/base.cfg
+@@ -21,6 +21,7 @@
+ issue_memops_at_functional = false # Issue memory operations to the memory hierarchy as they are executed functionally (Pin front-end only)
+ num_host_cores = 0 # Number of host cores to use (approximately). 0 = autodetect based on available cores and cpu mask. -1 = no limit (oversubscribe)
+ enable_signals = false
++signals_to_ignore = 13 # SIGPIPE = 13
+ enable_smc_support = false # Support self-modifying code
+ enable_pinplay = false # Run with a pinball instead of an application (requires a Pin kit with PinPlay support)
+ enable_syscall_emulation = true # Emulate system calls, cpuid, rdtsc, etc. (disable when replaying Pinballs)
+@@ -325,6 +326,7 @@
+ mirror_output = false
+ trace_prefix = ""             # Disable trace file prefixes (for trace and response fifos) by default
+ num_runs = 1                  # Add 1 for warmup, etc
++timeout = 360 		      # # The number of seconds to wait for a connection from the frontend before aborting
+ 
+ [scheduler]
+ type = pinned
+--- sniper/standalone/exceptions.cc
++++ sniper/standalone/exceptions.cc
+@@ -2,6 +2,7 @@
+ #include "simulator.h"
+ #include "trace_manager.h"
+ #include "hooks_manager.h"
++#include "config.hpp"
+ 
+ #include <signal.h>
+ #include <stdio.h>
+@@ -69,4 +70,10 @@
+ 
+    sa.sa_sigaction = handleSigUsr1;
+    sigaction(SIGUSR1, &sa, NULL);
++
++   auto signal_to_ignore = Sim()->getCfg()->getInt("general/signals_to_ignore");
++   if (signal_to_ignore)
++   {
++      signal(signal_to_ignore, SIG_IGN);
++   }
+ }
+--- sniper/sift/sift_writer.cc
++++ sniper/sift/sift_writer.cc
+@@ -543,8 +543,14 @@
+    {
+       Record respRec;
+       response->read(reinterpret_cast<char*>(&respRec), sizeof(rec.Other));
+-      sift_assert(!response->fail());
+-      sift_assert(respRec.Other.zero == 0);
++      if (response->fail())
++      {
++         return 1;
++      }
++      if (respRec.Other.zero != 0)
++      {
++         return 1;
++      }
+ 
+       switch(respRec.Other.type)
+       {
+--- sniper/standalone/standalone.cc
++++ sniper/standalone/standalone.cc
+@@ -21,8 +21,6 @@
+    if (ld_orig)
+       setenv("LD_LIBRARY_PATH", ld_orig, 1);
+ 
+-   registerExceptionHandler();
+-
+    string_vec args;
+ 
+    // Set the default config path if it isn't
+@@ -40,6 +38,8 @@
+ 
+    Simulator::allocate();
+    Sim()->start();
++   
++   registerExceptionHandler();
+ 
+    // config::Config shouldn't be called outside of init/fini
+    // With Sim()->hideCfg(), we let Simulator know to complain when someone does call Sim()->getCfg()
+--- sniper/common/trace_frontend/trace_manager.cc
++++ sniper/common/trace_frontend/trace_manager.cc
+@@ -12,7 +12,7 @@
+ #include <sys/stat.h>
+ 
+ TraceManager::TraceManager()
+-   : m_monitor(new Monitor(this))
++   : m_monitor(new Monitor(this, Sim()->getCfg()->getInt("traceinput/timeout")))
+    , m_threads(0)
+    , m_num_threads_started(0)
+    , m_num_threads_running(0)
+@@ -330,8 +330,9 @@
+    LOG_PRINT_ERROR("Unable to find core %d", core_id);
+ }
+ 
+-TraceManager::Monitor::Monitor(TraceManager *manager)
++TraceManager::Monitor::Monitor(TraceManager *manager, UInt32 timeout)
+    : m_manager(manager)
++   , m_timeout(timeout)
+ {
+ }
+ 
+@@ -346,7 +347,7 @@
+    String threadName("trace-monitor");
+    SimSetThreadName(threadName.c_str());
+ 
+-   UInt64 n = 0;
++   UInt32 n = 0;
+    while(true)
+    {
+       if (m_manager->m_num_threads_started > 0)
+@@ -354,9 +355,9 @@
+ 
+       if (n == 10)
+       {
+-         fprintf(stderr, "[SNIPER] WARNING: No SIFT connections made yet. Waiting...\n");
++	 fprintf(stderr, "[SNIPER] WARNING: No SIFT connections made yet. Waiting for a total of %d seconds.\n", m_timeout);
+       }
+-      else if (n == 60)
++      else if (n >= m_timeout)
+       {
+          fprintf(stderr, "[SNIPER] ERROR: Could not establish SIFT connection, aborting! Check benchmark-app*.log for errors.\n");
+          exit(1);
+--- sniper/common/trace_frontend/trace_manager.h
++++ sniper/common/trace_frontend/trace_manager.h
+@@ -19,8 +19,9 @@
+             void run();
+             _Thread *m_thread;
+             TraceManager *m_manager;
++	    UInt32 m_timeout;
+          public:
+-            Monitor(TraceManager *manager);
++	    Monitor(TraceManager *manager, UInt32 timeout = 60);
+             ~Monitor();
+             void spawn();
+       };
+--- sniper/common/trace_frontend/trace_thread.cc
++++ sniper/common/trace_frontend/trace_thread.cc
+@@ -775,12 +775,16 @@
+    Sift::Instruction inst, next_inst;
+ 
+    bool have_first = m_trace.Read(inst);
+-   // Received first instruction, let TraceManager know our SIFT connection is up and running
+-   Sim()->getTraceManager()->signalStarted();
+-   m_started = true;
+ 
+    while(have_first && m_trace.Read(next_inst))
+    {
++      if (!m_started)
++      {
++         // Received first instructions, let TraceManager know our SIFT connection is up and running
++         // Only enable once we have received two instructions, otherwise, we could deadlock
++         Sim()->getTraceManager()->signalStarted();
++         m_started = true;
++      }
+       if (m_blocked)
+       {
+          unblock();
+--- sniper/run-sniper
++++ sniper/run-sniper
+@@ -879,6 +879,8 @@
+ print '[SNIPER] Elapsed time:', '%.02f' % t_elapsed, 'seconds'
+ 
+ if tracegen:
++  # If we get here, there might still be some front-end processes running (maybe a deadlocked sift recorder trace?). If so, kill those processes
++  sniper_lib.kill_children()
+   # Cleanup the pipes and temporary directory
+   try:
+     for f in tracegen['tracefiles_created']:

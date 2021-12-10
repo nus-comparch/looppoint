@@ -1,0 +1,101 @@
+This text file is the "third-party-programs.txt" file specified in the associated Intel license agreement for "Program Record/Replay Toolkit". The third party programs and their corresponding licenses are listed below. The third party license terms for each program solely and exclusively govern your use of the third party programs
+1. PinPoints/bin/simpoint
+2. lib-ext/*/libbz2.a
+3. lib-ext/*/libzlib.a
+See license details for these third-party components below.
+========================================
+1. PinPoints/bin/simpoint:
+--------------------------
+  Copyright 2001, 2002, 2003, 2004, 2005 The Regents of the University of California All Rights Reserved
+
+  Permission to use, copy, modify and distribute any part of this SimPoint Toolkit for educational, non-profit, and industry research purposes, without fee, and without a written agreement is hereby granted, provided that the above copyright notice, this paragraph and the following four paragraphs appear in all copies and every modified file.
+
+  Permission is not granted to include SimPoint into a commercial product. Those desiring to incorporate this SimPoint Toolkit into commercial products should contact the Technology Transfer Office, University of California, San Diego, 9500 Gilman Drive, La Jolla, CA 92093-0910, Ph: (619) 534-5815, FAX: (619) 534-7345.
+
+  IN NO EVENT SHALL THE UNIVERSITY OF CALIFORNIA BE LIABLE TO ANY PARTY FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, INCLUDING LOST PROFITS, ARISING OUT OF THE USE OF THE SimPoint Toolkit, EVEN IF THE UNIVERSITY OF CALIFORNIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+  THE SimPoint Toolkit PROVIDED HEREIN IS ON AN "AS IS" BASIS, AND THE UNIVERSITY OF CALIFORNIA HAS NO OBLIGATION TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS. THE UNIVERSITY OF CALIFORNIA MAKES NO REPRESENTATIONS AND EXTENDS NO WARRANTIES OF ANY KIND, EITHER IMPLIED OR EXPRESS, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, OR THAT THE USE OF THE SimPoint Toolkit WILL NOT INFRINGE ANY PATENT, TRADEMARK OR OTHER RIGHTS.
+
+  No non-profit user may place any restrictions on the use of this software, including as modified by the user, by any other authorized user.
+=======================
+2. lib-ext/*/libbz2.a:
+----------------------
+
+libbz2.a was built using bzip/libbzip2 sources  (version 1.0.5) downloaded from http://www.bzip.org.
+
+LICENSE from the source distribution:
+--------------------------------------------------------------------------
+
+This program, "bzip2", the associated library "libbzip2", and all
+documentation, are copyright (C) 1996-2007 Julian R Seward.  All
+rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+
+2. The origin of this software must not be misrepresented; you must 
+   not claim that you wrote the original software.  If you use this 
+   software in a product, an acknowledgment in the product 
+   documentation would be appreciated but is not required.
+
+3. Altered source versions must be plainly marked as such, and must
+   not be misrepresented as being the original software.
+
+4. The name of the author may not be used to endorse or promote 
+   products derived from this software without specific prior written 
+   permission.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
+OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Julian Seward, jseward@bzip.org
+bzip2/libbzip2 version 1.0.5 of 10 December 2007
+
+--------------------------------------------------------------------------
+=======================
+3. lib-ext/*/libzlib.a:
+------------------------
+libzlib.a was built using zlib sources  (version 1.2.6) downloaded from http://www.zlib.net.
+
+License from the website [http://www.zlib.net/zlib_license.html]
+----------------------------------------------------------------
+License
+/* zlib.h -- interface of the 'zlib' general purpose compression library
+  version 1.2.7, May 2nd, 2012
+
+  Copyright (C) 1995-2012 Jean-loup Gailly and Mark Adler
+
+  This software is provided 'as-is', without any express or implied
+  warranty.  In no event will the authors be held liable for any damages
+  arising from the use of this software.
+
+  Permission is granted to anyone to use this software for any purpose,
+  including commercial applications, and to alter it and redistribute it
+  freely, subject to the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software
+     in a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+  3. This notice may not be removed or altered from any source distribution.
+
+  Jean-loup Gailly        Mark Adler
+  jloup@gzip.org          madler@alumni.caltech.edu
+
+*/
+=============

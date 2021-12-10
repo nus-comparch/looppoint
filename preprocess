@@ -1,0 +1,213 @@
+#!/usr/bin/env python2
+# BEGIN_LEGAL
+# The MIT License (MIT)
+#
+# Copyright (c) 2021, National University of Singapore
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# END_LEGAL
+
+# Ex. './preprocess' 'cpu2017-cam4-1' 'train' '8' '<base-dir>'
+
+import os, sys, glob, errno
+
+# Paths are relative to the base directory
+input_dirs = {}
+input_dirs['train'] = [
+        'apps/cpu2017/644.nab_s/train',
+        'apps/cpu2017/619.lbm_s/train',
+        'apps/cpu2017/621.wrf_s/train',
+        'apps/cpu2017/603.bwaves_s/train',
+        'apps/cpu2017/607.cactuBSSN_s/train',
+        'apps/cpu2017/657.xz_s/train',
+        'apps/cpu2017/628.pop2_s/train',
+        'apps/cpu2017/654.roms_s/train',
+        'apps/cpu2017/649.fotonik3d_s/train',
+        'apps/cpu2017/638.imagick_s/train',
+        'apps/cpu2017/627.cam4_s/train',
+]
+
+input_dirs['test'] = [
+        'apps/cpu2017/644.nab_s/test',
+        'apps/cpu2017/619.lbm_s/test',
+        'apps/cpu2017/621.wrf_s/test',
+        'apps/cpu2017/603.bwaves_s/test',
+        'apps/cpu2017/607.cactuBSSN_s/test',
+        'apps/cpu2017/657.xz_s/test',
+        'apps/cpu2017/628.pop2_s/test',
+        'apps/cpu2017/654.roms_s/test',
+        'apps/cpu2017/649.fotonik3d_s/test',
+        'apps/cpu2017/638.imagick_s/test',
+        'apps/cpu2017/627.cam4_s/test',
+        'apps/demo/matrix-omp/test',
+        'apps/demo/dijkstra-openmp/test',
+]
+
+input_dirs['C'] = [
+        'apps/npb/ep/C',
+        'apps/npb/bt/C',
+        'apps/npb/sp/C',
+        'apps/npb/lu/C',
+        'apps/npb/ua/C',
+        'apps/npb/is/C',
+        'apps/npb/mg/C',
+        'apps/npb/ft/C',
+        'apps/npb/cg/C',
+]
+
+binary_path = {}
+
+binary_path['cpu2017'] = [
+        'apps/cpu2017/644.nab_s/nab_s.icc18.0.gO2avx',
+        'apps/cpu2017/619.lbm_s/lbm_s.icc18.0.gO2avx',
+        'apps/cpu2017/621.wrf_s/wrf_s.icc18.0.gO2avx',
+        'apps/cpu2017/603.bwaves_s/speed_bwaves.icc18.0.gO2avx',
+        'apps/cpu2017/607.cactuBSSN_s/cactuBSSN_s.icc18.0.gO2avx',
+        'apps/cpu2017/657.xz_s/xz_s.icc18.0.gO2avx',
+        'apps/cpu2017/628.pop2_s/speed_pop2.icc18.0.gO2avx',
+        'apps/cpu2017/654.roms_s/sroms.icc18.0.gO2avx',
+        'apps/cpu2017/649.fotonik3d_s/fotonik3d_s.icc18.0.gO2avx',
+        'apps/cpu2017/638.imagick_s/imagick_s.icc18.0.gO2avx',
+        'apps/cpu2017/627.cam4_s/cam4_s.icc18.0.gO2avx',
+        ]
+
+binary_path['demo'] = [
+        'apps/demo/matrix-omp/matrix-omp',
+        'apps/demo/dijkstra-openmp/dijkstra_openmp.gcc',
+        ]
+
+binary_path['npb'] = [
+        'apps/npb/ep/ep.C.x',
+        'apps/npb/bt/bt.C.x',
+        'apps/npb/sp/sp.C.x',
+        'apps/npb/lu/lu.C.x',
+        'apps/npb/ua/ua.C.x',
+        'apps/npb/is/is.C.x',
+        'apps/npb/mg/mg.C.x',
+        'apps/npb/ft/ft.C.x',
+        'apps/npb/cg/cg.C.x',
+        ]
+
+name_to_dir = {
+        'bwaves': '603.bwaves_s',
+        'cactus': '607.cactuBSSN_s',
+        'lbm': '619.lbm_s',
+        'wrf': '621.wrf_s',
+        'cam4': '627.cam4_s',
+        'pop2': '628.pop2_s',
+        'imagick': '638.imagick_s',
+        'nab': '644.nab_s',
+        'fotonik': '649.fotonik3d_s',
+        'roms': '654.roms_s',
+        'xz': '657.xz_s',
+        'matrix': 'matrix-omp',
+        'dijkstra': 'dijkstra-openmp',
+        'bt': 'bt',
+        'cg': 'cg',
+        'ep': 'ep',
+        'ft': 'ft',
+        'is': 'is',
+        'lu': 'lu',
+        'mg': 'mg',
+        'sp': 'sp',
+        'ua': 'ua',
+        }
+
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else: raise
+
+def findfile(filename, extension, paths, subpaths = ('.')):
+  for dirname in paths:
+    for subpath in subpaths:
+      for ext in ('', extension):
+        fullname = os.path.realpath(os.path.join(dirname, subpath, filename + ext))
+        if os.path.exists(fullname):
+          return fullname
+  return False
+
+def findtrace(trace, suffix = '.sift', curdir = os.getcwd()):
+  dirnames = (sys.argv[4], curdir)
+  return findfile(trace, suffix, dirnames, ('.', 'apps'))
+
+# ========
+# Mainline
+# ========
+app = sys.argv[1].split('-')[1] # 'cpu2017-cam4-1' -> cam4
+application = name_to_dir[app]
+
+print '[PREPROCESS]', application
+
+for b in binary_path[sys.argv[1].split('-')[0]]:
+  if application not in b:
+    continue
+  bin_to_link = b
+  print '[PREPROCESS]', bin_to_link
+  bin_to_link_full = findtrace(bin_to_link, suffix = '')
+  if not bin_to_link_full:
+    print '[PREPROCESS] Unable to find the binary to link with the name [', bin_to_link, ']'
+    sys.exit(1)
+  print '[PREPROCESS]', bin_to_link_full
+  dest = os.path.join(os.getenv('PWD','.'), 'base.exe')
+  print '[PREPROCESS] symlinking', os.path.basename(bin_to_link_full), dest
+  try:
+    os.symlink(bin_to_link_full, dest)
+  except OSError, e:
+    if e.errno == errno.EEXIST:
+      print '[PREPROCESS] File', i, 'exists; skipping.'
+
+input_to_link = None
+for d in input_dirs[sys.argv[2]]:
+  if application not in d:
+    continue
+
+  input_to_link = d
+
+  if not input_to_link:
+    print '[PREPROCESS] Unable to identify the directory to link with the application name [', application, ']'
+    sys.exit(1)
+
+  print '[PREPROCESS]', input_to_link
+
+  # Copy the input data to a local location so we can run local runs that are very large (GBs in size)
+
+  input_to_link_full = findtrace(input_to_link, suffix = '')
+  if not input_to_link_full:
+    print '[PREPROCESS] Unable to find the input to link with the name [', input_to_link, ']'
+    sys.exit(1)
+
+  print '[PREPROCESS]', input_to_link_full
+
+  # Iterate over all of the benchmarks and link them.
+  for i in glob.iglob(os.path.join(input_to_link_full,'*')):
+    dest = os.path.join(os.getenv('PWD','.'),os.path.basename(i))
+    print '[PREPROCESS] symlinking', i, dest
+    try:
+      os.symlink(i,dest)
+    except OSError, e:
+      if e.errno == errno.EEXIST:
+        print '[PREPROCESS] File', i, 'exists; skipping.'
+  
+print ('[PREPROCESS] Done')
+
+

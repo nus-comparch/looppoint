@@ -1,0 +1,10 @@
+*.info
+*.log
+*.info.log
+lplib.pyc
+suites.pyc
+results/
+apps/cpu2017/__init__.pyc
+apps/demo/__init__.pyc
+tools/pin-3.13-98189-g60a6ef199-gcc-linux
+tools/sniper

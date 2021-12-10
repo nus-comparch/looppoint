@@ -1,0 +1,166 @@
+--- pin-3.13-98189-g60a6ef199-gcc-linux/source/tools/InstLib/alarms.H
++++ pin-3.13-98189-g60a6ef199-gcc-linux/source/tools/InstLib/alarms.H
+@@ -26,7 +26,7 @@
+ class ALARM_ICOUNT : public IALARM
+ {
+ public:
+-    ALARM_ICOUNT(const string& icount_str, UINT32 tid, UINT32 count, 
++    ALARM_ICOUNT(const string& icount_str, UINT32 tid, UINT64 count, 
+                  BOOL need_ctxt, ALARM_MANAGER* manager):
+       IALARM(tid, count, need_ctxt, manager){
+           UINT64 icount = PARSER::StringToUint64(icount_str);
+@@ -54,7 +54,7 @@
+ class ALARM_ADDRESS : public IALARM
+ {
+ public:
+-    ALARM_ADDRESS(const string& address, UINT32 tid, UINT32 count, 
++    ALARM_ADDRESS(const string& address, UINT32 tid, UINT64 count, 
+                  BOOL need_ctxt, ALARM_MANAGER* manager):      
+       IALARM(tid, count, need_ctxt, manager){
+           _address = PARSER::StringToUint64(address);
+@@ -68,7 +68,7 @@
+ class ALARM_SYMBOL : public IALARM
+ {
+ public:
+-    ALARM_SYMBOL(const string& symbol, UINT32 tid, UINT32 count, 
++    ALARM_SYMBOL(const string& symbol, UINT32 tid, UINT64 count, 
+                  BOOL need_ctxt, ALARM_MANAGER* manager):
+       IALARM(tid, count, need_ctxt, manager), _symbol(symbol){
+         Activate();
+@@ -87,7 +87,7 @@
+ {
+ public:
+     ALARM_IMAGE(const string& image, const string& offset , UINT32 tid, 
+-                UINT32 count, BOOL need_ctxt, ALARM_MANAGER* manager): 
++                UINT64 count, BOOL need_ctxt, ALARM_MANAGER* manager): 
+     IALARM(tid, count, need_ctxt, manager),
+     _image(image){
+         _offset = PARSER::StringToUint64(offset);    
+@@ -107,7 +107,7 @@
+ class ALARM_SSC : public IALARM
+ {
+ public:
+-    ALARM_SSC(const string& ssc, UINT32 tid, UINT32 count, 
++    ALARM_SSC(const string& ssc, UINT32 tid, UINT64 count, 
+                  BOOL need_ctxt, ALARM_MANAGER* manager):
+       IALARM(tid, count, need_ctxt, manager),_ssc(ssc){
+           Activate();
+@@ -125,7 +125,7 @@
+ class ALARM_ITEXT : public IALARM
+ {
+ public:
+-    ALARM_ITEXT(const string& itext, UINT32 tid, UINT32 count, 
++    ALARM_ITEXT(const string& itext, UINT32 tid, UINT64 count, 
+         BOOL need_ctxt, ALARM_MANAGER* manager):
+     IALARM(tid, count, need_ctxt, manager),_itext(itext){
+         Activate();
+@@ -142,7 +142,7 @@
+ class ALARM_INT3 : public IALARM
+ {
+ public:
+-    ALARM_INT3(const string& icount_str,UINT32 tid, UINT32 count, 
++    ALARM_INT3(const string& icount_str,UINT32 tid, UINT64 count, 
+         BOOL need_ctxt, ALARM_MANAGER* manager): 
+     IALARM(tid, count, need_ctxt, manager){
+             UINT64 icount = PARSER::StringToUint64(icount_str);
+@@ -163,7 +163,7 @@
+ class ALARM_ISA_CATEGORY : public IALARM
+ {
+ public:
+-    ALARM_ISA_CATEGORY(const string& isa_ctg, UINT32 tid, UINT32 count, 
++    ALARM_ISA_CATEGORY(const string& isa_ctg, UINT32 tid, UINT64 count, 
+         BOOL need_ctxt, ALARM_MANAGER* manager):
+     IALARM(tid, count, need_ctxt, manager){
+         _isa_ctg = isa_ctg;
+@@ -182,7 +182,7 @@
+ class ALARM_ISA_EXTENSION : public IALARM
+ {
+ public:
+-    ALARM_ISA_EXTENSION(const string& isa_ext, UINT32 tid, UINT32 count, 
++    ALARM_ISA_EXTENSION(const string& isa_ext, UINT32 tid, UINT64 count, 
+                         BOOL need_ctxt, ALARM_MANAGER* manager):
+     IALARM(tid, count, need_ctxt, manager){
+           _isa_ext = isa_ext;
+@@ -226,7 +226,7 @@
+ class ALARM_ENTER_FUNC : public IALARM
+ {
+ public:
+-    ALARM_ENTER_FUNC(const string& func, UINT32 tid, UINT32 count, 
++    ALARM_ENTER_FUNC(const string& func, UINT32 tid, UINT64 count, 
+                      BOOL need_ctxt, ALARM_MANAGER* manager):
+     IALARM(tid, count, need_ctxt, manager){
+         _func_name = func;
+@@ -246,7 +246,7 @@
+ class ALARM_EXIT_FUNC : public IALARM
+ {
+ public:
+-    ALARM_EXIT_FUNC(const string& func, UINT32 tid, UINT32 count, 
++    ALARM_EXIT_FUNC(const string& func, UINT32 tid, UINT64 count, 
+                     BOOL need_ctxt, ALARM_MANAGER* manager):
+     IALARM(tid, count, need_ctxt, manager){
+         _func_name = func;
+@@ -265,7 +265,7 @@
+ class ALARM_CPUID : public IALARM
+ {
+ public:
+-    ALARM_CPUID(const string& val_str, UINT32 tid, UINT32 count, 
++    ALARM_CPUID(const string& val_str, UINT32 tid, UINT64 count, 
+                  BOOL need_ctxt, ALARM_MANAGER* manager):
+       IALARM(tid, count, need_ctxt, manager) {
+           UINT32 val = PARSER::StringToUint32(val_str);
+@@ -289,7 +289,7 @@
+ class ALARM_MAGIC : public IALARM
+ {
+ public:
+-    ALARM_MAGIC(const string& val_str, UINT32 tid, UINT32 count,
++    ALARM_MAGIC(const string& val_str, UINT32 tid, UINT64 count,
+                  BOOL need_ctxt, ALARM_MANAGER* manager);
+ 
+ private:
+@@ -309,7 +309,7 @@
+ class ALARM_PCONTROL : public IALARM
+ {
+ public:
+-    ALARM_PCONTROL(const string& region, UINT32 tid, UINT32 count,
++    ALARM_PCONTROL(const string& region, UINT32 tid, UINT64 count,
+                    BOOL need_ctxt, ALARM_MANAGER* manager):
+     IALARM(tid, count, need_ctxt, manager){
+         _region = region;
+@@ -330,7 +330,7 @@
+ class ALARM_TIMEOUT : public IALARM
+ {
+ public:
+-    ALARM_TIMEOUT(const string& timeout_str, UINT32 tid, UINT32 count, 
++    ALARM_TIMEOUT(const string& timeout_str, UINT32 tid, UINT64 count, 
+                  BOOL need_ctxt, ALARM_MANAGER* manager):
+       IALARM(tid, count, need_ctxt, manager) {
+ 
+@@ -364,7 +364,7 @@
+ class ALARM_SIGNAL : public IALARM
+ {
+ public:
+-    ALARM_SIGNAL(const string& signal_str, UINT32 tid, UINT32 count, 
++    ALARM_SIGNAL(const string& signal_str, UINT32 tid, UINT64 count, 
+                  BOOL need_ctxt, ALARM_MANAGER* manager):
+       IALARM(tid, count, need_ctxt, manager) {
+ 
+@@ -395,7 +395,7 @@
+ class ALARM_IMAGE_LOAD : public IALARM
+ {
+ public:
+-    ALARM_IMAGE_LOAD(const string& image_name, UINT32 tid, UINT32 count,
++    ALARM_IMAGE_LOAD(const string& image_name, UINT32 tid, UINT64 count,
+         BOOL need_ctxt, ALARM_MANAGER* manager) :
+         IALARM(tid, count, need_ctxt, manager) {
+ 
+--- pin-3.13-98189-g60a6ef199-gcc-linux/source/tools/InstLib/alarms.cpp
++++ pin-3.13-98189-g60a6ef199-gcc-linux/source/tools/InstLib/alarms.cpp
+@@ -459,7 +459,7 @@
+ 
+ //*****************************************************************************
+ 
+-ALARM_MAGIC::ALARM_MAGIC(const string& val_str, UINT32 tid, UINT32 count,
++ALARM_MAGIC::ALARM_MAGIC(const string& val_str, UINT32 tid, UINT64 count,
+                          BOOL need_ctxt, ALARM_MANAGER* manager)
+     : IALARM(tid, count, need_ctxt, manager)
+ {

@@ -339,23 +339,34 @@ def evaluate(config):
       try:
         region_stats[regionid], region_config[regionid] = get_sim_res(config, sim_path, profile_path, 'r%s' % regionid)
       except:
-        print('[LOOPPOINT] Error: Simulation results not found for %s' % regionid)
+        print('[LOOPPOINT] Error: Simulation results not found for r%s' % regionid)
 
   full_prog_runtime = read_simstats(region_stats['wp'], region_config['wp'], 'runtime')
   extrapolated_runtime = 0.0
   max_rep_runtime = 0.0
   sum_rep_runtime = 0.0
+  cov_mult = 0.0
+  tot_mult = sum(region_mult.values())
   for regionid, multiplier in region_mult.iteritems():
-    region_runtime =  read_simstats(region_stats[regionid], region_config[regionid], 'runtime')
+    region_runtime = 0
+    try:
+      region_runtime =  read_simstats(region_stats[regionid], region_config[regionid], 'runtime')
+    except:
+      print('[LOOPPOINT] Warning: Skipping r%s as the simulation results are not available' % regionid)
+      continue
+    cov_mult += multiplier
     extrapolated_runtime += region_runtime * multiplier
     if region_runtime > max_rep_runtime:
       max_rep_runtime = region_runtime
     sum_rep_runtime += region_runtime
 
-  speedup_p = full_prog_runtime/max_rep_runtime
-  speedup_s = full_prog_runtime/sum_rep_runtime
+  coverage = cov_mult/tot_mult
+  extrapolated_runtime = extrapolated_runtime/coverage
 
-  tab = [ '%(bm_fullname)s.%(bm_input)s' % config, round(full_prog_runtime, 2), round(extrapolated_runtime,2), round((1-(extrapolated_runtime/full_prog_runtime))*100, 2), round(speedup_p,2), round(speedup_s,2) ]
+  speedup_p = full_prog_runtime/max_rep_runtime
+  speedup_s = full_prog_runtime/(sum_rep_runtime/coverage)
+
+  tab = [ '%(bm_fullname)s.%(bm_input)s' % config, round(full_prog_runtime, 2), round(extrapolated_runtime, 2), round((1-(extrapolated_runtime/full_prog_runtime))*100, 2), round(speedup_p, 2), round(speedup_s, 2), round(coverage*100, 2) ]
   return tab
 
 def get_app_cmd(config):
@@ -608,5 +619,5 @@ Usage:
 
   if not native_run:
     print
-    print (tabulate(res_tab, headers = ['application', 'runtime\nactual (ns)', 'runtime\npredicted (ns)', 'error\n(%)', 'speedup\n(parallel)', 'speedup\n(serial)'], tablefmt = 'pretty', floatfmt='.2f', colalign=('left', 'center', 'center', 'center', 'center', 'center')))
+    print (tabulate(res_tab, headers = [ 'application', 'runtime\nactual (ns)', 'runtime\npredicted (ns)', 'error\n(%)', 'speedup\n(parallel)', 'speedup\n(serial)', 'coverage\n(%)' ], tablefmt = 'pretty', floatfmt='.2f', colalign=('left', 'center', 'center', 'center', 'center', 'center', 'center')))
     print

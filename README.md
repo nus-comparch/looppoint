@@ -56,27 +56,27 @@ amount of time
 
 ## Installation
 
-1. Clone or download the artifact and navigate to the artifact base directory
+1. Download the artifact from the Zenodo link and navigate to the artifact base directory
 1. Request for the path to Sniper git repo at https://snipersim.org/w/Download that allows you to download Sniper
-    1. Please provide a valid email address to get the link to the latest Sniper (we use v7.4)
-    1. You will receive a secret link to the Sniper git repo to your email
+	1. Please provide a valid email address to get the link to the latest Sniper (we use v7.4)
+	1. You will receive a secret link to the Sniper git repo to your email
 1. Follow the below steps to setup and build the artifact once you have the Sniper gitid
-    1. Build the docker image
-    ```
-    $ make build
-    ```
-    2. Run the docker image
-    ```
-    $ make
-    ```
-    3. Build the provided applications
-    ```
-    $ make apps
-    ```
-    4. Download and build the required tools once you have the Sniper gitid link
-    ```  
-    $ make tools SNIPER_GIT_REPO="http://snipersim.org/<path-to-git-repo>.git"
-    ```
+	1. Build the docker image
+	```
+	$ make build
+	```
+	2. Run the docker image
+	```
+	$ make
+	```
+	3. Build the provided applications
+	```
+	$ make apps
+	```
+	4. Download and build the required tools once you have the Sniper gitid link
+	```
+	$ make tools SNIPER_GIT_REPO="http://snipersim.org/<path-to-git-repo>.git"
+	```
 1. These steps should automatically download the required versions of Pin kit and Sniper, and
 apply the required patches
 
@@ -121,15 +121,14 @@ Note that SPEC applications and default results are not included in the open ver
 
 ###### Usage Examples
 ```
-./run-looppoint.py -p demo-matrix-1 -n 8 -w active --force
+./run-looppoint.py -p demo-matrix-1 -n 8 --force
 ```
-will start a new set of end-to-end run for `demo-matrix-1` program with `8` cores, using `active` wait policy and `test` inputs
+will start a new set of end-to-end run for `demo-matrix-1` program with `8` cores, using `passive` wait policy and `test` inputs
 
 ```
-./run-looppoint.py -p demo-matrix-2 --force
+./run-looppoint.py -p demo-matrix-2 -w active -i test --force
 ```
-will start a new set of end-to-end run for `demo-matrix-2` program with default settings, viz., `passive` wait policy,
-`8` threads, and `test` inputs
+will start a new set of end-to-end run for `demo-matrix-2` program with `8` cores, using `active` wait policy and `test` inputs
 
 ## Evaluation and expected results
 To replicate the results shown in this paper, it is necessary to run each of the applications in SPEC CPU2017 benchmark suite.

@@ -24,7 +24,7 @@ This file describes these parts and how to run them to replicate our experiments
 | Disk space requirement     | &asymp;50 GB                                                  |
 | Workflow preparation time  | &asymp;1 day                                                  |
 | Experiment completion time | &asymp;1-4 weeks                                              |
-| Publicly available?        | Zenodo (10.5281/zenodo.5667621)                               |
+| Publicly available?        | Zenodo (10.5281/zenodo.5667620)                               |
 | Code licenses              | Academic and Proprietary                                      |
  
 ## Description
@@ -35,7 +35,8 @@ artifact, however, we do not include SPEC CPU2017 binaries and provide a demo ap
 the end-to-end methodology. The setup can be used to replicate any results that we show in the
 paper. Pin kit and Sniper will be downloaded while setting up the artifact (see Installation section
 for instructions). The tool binaries are provided that works with Intel Pin. The artifact is available 
-on Zenodo with DOI 10.5281/zenodo.5148592.
+on Zenodo with DOI 10.5281/zenodo.5667620. We will be releasing several versions in the future, and 
+therefore we recommend using the latest version available at the DOI.
 
 ### Hardware dependencies
 The artifact is developed such that it can run on an x86-based Linux machine. We strongly recommend 
@@ -102,11 +103,12 @@ $ ./run-looppoint.py -h
 ```
 
 The arguments are defined as follows:
-* `-p` or `--program`: program to be executed, supplied in the format `<suite>-<application>-<input>` \
+* `-p` or `--program`: program to be executed, supplied in the format `<suite>-<application>-<input-num>` \
 Multiple programs can be submitted as comma-separated inputs \
 _Default:_ `demo-matrix-1` \
 * `-n` or `--ncores`: num of threads \
 _Default:_ `8`
+_Note:_ The demo app has three inputs for test input class and is hard set to work for 8 threads.
 * `-i` or `--input-class`: input class \
 _Default:_ `test`
 * `-w` or `--wait-policy`: omp wait policy \

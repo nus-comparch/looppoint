@@ -58,25 +58,25 @@ amount of time
 
 1. Download the artifact from the Zenodo link and navigate to the artifact base directory
 1. Request for the path to Sniper git repo at https://snipersim.org/w/Download that allows you to download Sniper
-  1. Please provide a valid email address to get the link to the latest Sniper (we use v7.4)
-  1. You will receive a secret link to the Sniper git repo to your email
+    1. Please provide a valid email address to get the link to the latest Sniper (we use v7.4)
+    1. You will receive a secret link to the Sniper git repo to your email
 1. Follow the below steps to setup and build the artifact once you have the Sniper gitid
-  1. Build the docker image
-  ```
-  $ make build
-  ```
-  1. Run the docker image
-  ```
-  $ make
-  ```
-  1. Build the provided applications
-  ```
-  $ make apps
-  ```
-  1. Download and build the required tools once you have the Sniper gitid link
-  ```
-  $ make tools SNIPER_GIT_REPO="http://snipersim.org/<path-to-git-repo>.git"
-  ```
+    1. Build the docker image
+    ```
+    $ make build
+    ```
+    1. Run the docker image
+    ```
+    $ make
+    ```
+    1. Build the provided applications
+    ```
+    $ make apps
+    ```
+    1. Download and build the required tools once you have the Sniper gitid link
+    ```
+    $ make tools SNIPER_GIT_REPO="http://snipersim.org/<path-to-git-repo>.git"
+    ```
 1. These steps should automatically download the required versions of Pin kit and Sniper, and
 apply the required patches
 

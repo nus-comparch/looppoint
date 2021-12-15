@@ -56,7 +56,7 @@ amount of time
 
 ## Installation
 
-1. Download the artifact from the Zenodo link and navigate to the artifact base directory
+1. Clone or download the artifact and navigate to the artifact base directory
 1. Request for the path to Sniper git repo at https://snipersim.org/w/Download that allows you to download Sniper
     1. Please provide a valid email address to get the link to the latest Sniper (we use v7.4)
     1. You will receive a secret link to the Sniper git repo to your email
@@ -65,16 +65,16 @@ amount of time
     ```
     $ make build
     ```
-    1. Run the docker image
+    2. Run the docker image
     ```
     $ make
     ```
-    1. Build the provided applications
+    3. Build the provided applications
     ```
     $ make apps
     ```
-    1. Download and build the required tools once you have the Sniper gitid link
-    ```
+    4. Download and build the required tools once you have the Sniper gitid link
+    ```  
     $ make tools SNIPER_GIT_REPO="http://snipersim.org/<path-to-git-repo>.git"
     ```
 1. These steps should automatically download the required versions of Pin kit and Sniper, and
@@ -105,7 +105,7 @@ $ ./run-looppoint.py -h
 The arguments are defined as follows:
 * `-p` or `--program`: program to be executed, supplied in the format `<suite>-<application>-<input-num>` \
 Multiple programs can be submitted as comma-separated inputs \
-_Default:_ `demo-matrix-1` \
+_Default:_ `demo-matrix-1`
 * `-n` or `--ncores`: num of threads \
 _Default:_ `8`
 _Note:_ The demo app has three inputs for test input class and is hard set to work for 8 threads.
@@ -121,9 +121,9 @@ Note that SPEC applications and default results are not included in the open ver
 
 ###### Usage Examples
 ```
-./run-looppoint.py -p demo-matrix-1 -n 4 -w active --force
+./run-looppoint.py -p demo-matrix-1 -n 8 -w active --force
 ```
-will start a new set of end-to-end run for `demo-matrix-1` program with `4` cores, using `active` wait policy and `test` inputs
+will start a new set of end-to-end run for `demo-matrix-1` program with `8` cores, using `active` wait policy and `test` inputs
 
 ```
 ./run-looppoint.py -p demo-matrix-2 --force

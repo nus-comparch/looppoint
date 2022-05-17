@@ -1,0 +1,21 @@
+#!/bin/sh
+# Bug reports and comments to Igor.Ermolaev@intel.com
+base=$(dirname $(readlink -f ${BASH_SOURCE[0]:-$0}))
+lit=$1
+trace=$(basename $lit);trace=${trace#w};trace=${trace#lit.};trace=${trace%.*}
+name=`echo $trace|sed 's/\.\(SSE\|AVX\|FMA\|LRB\).*$//'`
+tar xfvj $lit
+$base/thinout
+if [ -f pinlit64.tzcat.0.gz ]; then mv -f pinlit64.tzcat.0.gz pinlit64.tzcat.gz; fi
+if [ -f pinlit64.arch.xml ]; then
+   num_cpus=`grep -m 1 '<num_cpus>' pinlit64.arch.xml|sed 's/^\s*<num_cpus>\([0-9]\+\)<\/num_cpus>\s*$/\1/'`
+   if [ -n "$num_cpus" ] && [ $num_cpus -eq 1 ]; then 
+      [ ! -f pinlit64.cmd.0.gz ] || mv pinlit64.cmd.0.gz pinlit64.cmd.gz
+      [ ! -f pinlit64.cmd.0 ] || mv pinlit64.cmd.0 pinlit64.cmd
+      [ ! -f pinlit64.lit.0.gz ] || mv pinlit64.lit.0.gz pinlit64.lit.gz
+      [ ! -f pinlit64.lit.0 ] || mv pinlit64.lit.0 pinlit64.lit
+   fi
+fi
+for prfx in pinlit64 loop func call path profile coverage baseline mix-out algn-out clc-out; do
+   if [ `ls -1 $prfx.* 2>/dev/null|wc -l` -gt 0 ]; then rename ${prfx}. ${name}_${prfx}. ${prfx}.*; fi
+done

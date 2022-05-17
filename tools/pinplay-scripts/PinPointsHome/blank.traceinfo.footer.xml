@@ -1,0 +1,17 @@
+</trace-details>
+<!-- Any issue that occurred during collection or processing that
+  restricted the workload or limited the trace set. 
+  You can have more than one. -->
+<collection-issue>
+CHANGEME: Info on collection goes here.
+</collection-issue>
+
+<!-- Anything else about the traces. You can have more than one. -->
+<other>
+CHANGEME: Other information goes here.
+Just remove this entire tag if you have no other info.
+</other>
+</traces>
+<platform>
+<system-info>
+

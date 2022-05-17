@@ -1,0 +1,111 @@
+#!/usr/bin/perl -w
+# Bug reports and comments to Igor.Ermolaev@intel.com
+use strict;
+no warnings 'portable';
+
+use constant { FALSE=>0, TRUE=>-1 };
+
+
+my $size     = int $ARGV[0];
+my $strt     = undef;
+my $stop     = $ARGV[1];
+my $stop_skp = 0;
+if( $#ARGV >= 2 )
+{
+   $strt     = $stop;
+   $stop     = $ARGV[2];
+   $stop_skp = int $ARGV[3] if $#ARGV >= 3;
+}
+
+
+my $diff     = undef;
+my $ofs      = 0;
+my $len      = 0;
+my $strt_skp = 0;
+my $strt_cnt = 0;
+my $stop_cnt = 0;
+
+my $stop_idx  = 0;
+my @trace     = ();
+my $trace_idx = 0;
+my $strt_idx  = 0;
+my $strt_mgn  = 0;
+
+while( <STDIN> )
+{
+   if( defined $strt && /^\s*(\d+)\s.+\s\Q$strt\E$/io )
+   {
+      $strt_cnt++;
+      push @trace, { is_strt=>TRUE, is_stop=>FALSE, icount=>int $1, scnt=>$strt_cnt };
+      while( $strt_idx < $trace_idx && $trace[$strt_idx]{is_strt} == FALSE ){ $stop_idx--;$strt_idx++; }
+   }
+   if( /^\s*(\d+)\s.+\s\Q$stop\E$/io )
+   {
+      $stop_cnt++;
+      my $icnt = int $1;
+      if( defined $strt )
+      {
+         next if !@trace;
+         $stop_idx++;
+         if( $trace_idx == $#trace)
+         {
+            $trace[$trace_idx]{is_stop} = TRUE;
+         }
+         else
+         {
+            push @trace, { is_strt=>FALSE, is_stop=>TRUE, icount=>$icnt, scnt=>$stop_cnt };
+            while( $strt_idx < $trace_idx && $trace[$strt_idx]{is_strt} == FALSE ){ $stop_idx--;$strt_idx++; }
+         }
+         #print "$strt_idx $stop_idx\n";
+         if( $stop_idx == $stop_skp )
+         {
+            do{
+               #print $trace[$strt_idx]{icount}, '->', $trace[$trace_idx]{icount}, ':', $trace[$trace_idx]{icount}-$trace[$strt_idx]{icount}, "\n";
+               my $l = $trace[$trace_idx]{icount} - $trace[$strt_idx]{icount};
+               my $d = abs( $size - $l );
+               if( !defined $diff || $d < $diff )
+               {
+                  $diff     = $d;
+                  $len      = $l;
+                  $ofs      = $trace[$strt_idx]{icount};
+                  $strt_skp = $trace[$strt_idx]{scnt};
+               }
+               $stop_idx-- if $trace[$strt_idx]{is_stop} == TRUE;
+               $strt_idx++;
+            }while( $trace[$strt_idx]{is_stop} == FALSE );
+            #print "$strt_idx $stop_idx\n";
+            while( $strt_idx < $trace_idx && $trace[$strt_idx]{is_strt} == FALSE ){ $stop_idx--;$strt_idx++; }
+            if( $strt_idx > 10000 )
+            {
+               splice @trace, 0, $strt_idx;
+               $trace_idx -= $strt_idx;
+               $strt_mgn  += $strt_idx;
+               $strt_idx   = 0;
+            }
+            #print "$strt_idx $stop_idx\n";
+         }
+         elsif( $stop_skp == 0 )
+         {
+            print $trace[$strt_idx]{icount}, '->', $trace[$trace_idx]{icount}, ':', $trace[$trace_idx]{icount}-$trace[$strt_idx]{icount}, "\n";
+         }
+      }
+      else
+      {
+         my $d = abs( $size - $icnt );
+         if( !defined $diff || $d < $diff )
+         {
+            $diff     = $d;
+            $stop_skp = $stop_cnt;
+            $len      = $icnt-1;
+            $ofs      = $icnt;
+         }
+         elsif( $d > $diff ){ last; }
+      }
+   }
+   $trace_idx++ if defined $strt;
+}
+
+if( defined $strt ){ print "$strt_skp $ofs $len\n" if $strt_skp > 0 || $size == 0; }
+else               { print "$stop_skp $len\n"      if $stop_skp > 0 || $size == 0; }
+
+exit 0;

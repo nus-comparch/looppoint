@@ -1,0 +1,300 @@
+#!/usr/bin/perl -w
+# Bug reports and comments to Igor.Ermolaev@intel.com
+use strict;
+no warnings 'portable';
+use File::Temp qw 'tempfile unlink0';
+
+use constant { FALSE=>0, TRUE=>-1 };
+
+my @page_msks = ( 0, 0xfff, 0x1fffff );
+my $msk_idx   = $#page_msks;
+
+my %trans = ( 'v'=>'phys2virt', 'f'=>'virt2func', 'm'=>'virt2modl', 's'=>'virt2srcl', 'e'=>'addr2eocl', 'x'=>'dec2hex', 'c'=>'' );
+my $tkeys = '['.(join "", keys %trans).']';
+
+my  $module_idx = undef;
+my  $symbol_idx = undef;
+my  @modules    = ();
+our @symbols    = ();
+our %ptov       = ();
+my  @filters    = ();
+my  $a2l        = 'addr2line';
+
+if( $#ARGV >= 0 && $ARGV[0] eq '-a2l' )
+{
+   $a2l = $ARGV[1];
+   shift @ARGV;shift @ARGV;
+}
+if( $#ARGV < 0 )
+{
+   print "Usage: annotate [ -a2l path-to-addr2line ] pinlit64.procinfo.xml pinlit64.ptov [ translators ] < mix-out.txt\n";
+   exit -1;
+}
+for(@ARGV)
+{
+   if( /^s\/(.*[^\\])\/((.*[^\\])?)\/([gi]*)/o )
+   {
+       #print "$1\n";
+       #print "$2\n";
+       #print "$4\n";
+       my $re = index($4,'i') == -1 ? qr/$1/ : qr/$1/i;
+       my $gb = index($4,'g') == -1 ? FALSE  : TRUE   ;
+       my $rp = $2;
+          $rp =~ s/\\\$/\/\/D/go;$rp =~ s/'/\/\/Q/go;
+          $rp =~ s/\$(\d+)/\$c$1/go;
+       #print "$rp\n";
+          $rp =~ s/\$($tkeys)(\d+)/'.$trans{$1}(\$$2).'/g;$rp = "'".$rp."'";
+          $rp =~ s/\/\/Q/'."'".'/go;
+          $rp =~ s/\/\/D/\\\$/go;$rp =~ s/(\\[\$\\tn])/'."$1".'/go;
+          $rp =~ s/^''\.//o;$rp =~ s/\.''$//o;$rp =~ s/\.''\././go;
+       #print "$rp\n";
+       push @filters, { re=>$re, rp=>$rp, gb=>$gb }
+   }
+   elsif( /^.*\.ptov$/o )
+   {
+      open PTOV, "<$_" or die;
+         while(<PTOV>) 
+         {
+            if( /^([[:xdigit:]]+)\s+([[:xdigit:]]+)$/o )
+            {
+               my $pa = hex $1;
+               my $va = hex $2;
+               $ptov{$pa} = $va;
+               for( my $i = 0; $i <= $msk_idx; $i++ )
+               {
+                  if( ( $pa & $page_msks[$i] ) != 0 || ( $va & $page_msks[$i] ) != 0 )
+                  {
+                     $msk_idx = $i-1;
+                     last;
+                  }
+               }
+            }
+         }
+      close PTOV;
+      #print "$msk_idx\n";
+   }
+   elsif( /^.*\.procinfo\.xml$/o )
+   {
+      open SYMS, "<$_" or die;
+         while(<SYMS>)
+         {
+            if( /\s*\<\s*(module|symbol)(\s+|^)/io )
+            {
+               if( lc $1 eq 'module' )
+               {
+                  $symbol_idx = undef;
+                  push @modules, {};
+                  $module_idx = $#modules;
+               }
+               elsif( lc $1 eq 'symbol' )
+               {
+                  push @symbols, { module=>$module_idx, count=>0 };
+                  $symbol_idx = $#symbols;
+               }
+            }
+            if( /\s+name\s*=\s*['"]([^'"]+)['"]/io )
+            {
+               $symbols[$symbol_idx]{name} = $1 if defined $symbol_idx;
+               $modules[$module_idx]{name} = $1 if defined $module_idx and !defined $symbol_idx;
+            }
+            if( /\s+base\s*=\s*['"]((0x)?[[:xdigit:]]+)['"]/io )
+            {
+               $symbols[$symbol_idx]{base} = hex $1 if defined $symbol_idx;
+               $modules[$module_idx]{base} = hex $1 if defined $module_idx and !defined $symbol_idx;
+            }
+            if( /\s+path\s*=\s*['"]([^'"]+)['"]/io )
+            {
+               $modules[$module_idx]{path} = $1 if defined $module_idx;
+            }
+         }
+      close SYMS;
+      @symbols = sort { $a->{base} <=> $b->{base} } @symbols;
+   }
+}
+
+sub find_symbol
+{
+   my $addr     = shift;
+   my $min_idx  = 0;
+   my $max_idx  = $#symbols + 1;
+   my $idx      = 0;
+   while( $min_idx != $max_idx )
+   {
+      $idx = $min_idx + ( ( $max_idx - $min_idx ) >> 1 );
+      if( $symbols[$idx]{base} == $addr ) { $min_idx = $idx + 1; last; }
+      if( $symbols[$idx]{base} <  $addr ) { $min_idx = $idx + 1;       }
+      else                                { $max_idx = $idx    ;       }
+   }
+   return $min_idx;
+}
+
+sub pad_addr
+{
+   my $tmpl = shift;
+   my $addr = shift;
+   my  $sfx = $tmpl =~ /^(\s*(0x)?)/o ? $1 : '';
+   my  $pad = length($tmpl) - length($sfx) - length($addr);
+   return $pad > 0 ? $sfx.'0'x$pad.$addr : $sfx.$addr;
+}
+
+sub phys2virt
+{
+   my $phys_hex = shift;
+   my $phys     = hex $phys_hex;
+   my $page     = $phys & ~$page_msks[$msk_idx];
+   if( exists $ptov{$page} )
+   {
+      return pad_addr $phys_hex, ( sprintf '%x', ( $ptov{$page} | ( $phys & $page_msks[$msk_idx] ) ) );
+   }
+   else
+   {
+      my $phys_len = length $phys_hex;
+      return $phys_len > 2 ? ' 'x($phys_len-2).'NA' : 'NA';
+   }
+}
+
+sub virt2func
+{
+   my $virt_hex = shift;
+   my $virt     = hex $virt_hex;
+   my $fidx     = find_symbol $virt;
+   if( $fidx > 0 )
+   {
+      ( $symbols[$fidx-1]{base} <= $virt and ( $fidx > $#symbols or $virt < $symbols[$fidx]{base} ) ) or die;
+      return $symbols[$fidx-1]{name};
+   }
+   else
+   {
+      return 'func@'.$virt_hex;
+   }   
+}
+
+sub virt2modl
+{
+   my $virt_hex = shift;
+   my $virt     = hex $virt_hex;
+   my $fidx     = find_symbol $virt;
+   if( $fidx > 0 )
+   {
+      ( $symbols[$fidx-1]{base} <= $virt and ( $fidx > $#symbols or $virt < $symbols[$fidx]{base} ) ) or die;
+      my $module = $symbols[$fidx-1]{module};
+      return exists $modules[$module]{path} ? $modules[$module]{path} : $modules[$module]{name};
+   }
+   else
+   {
+      return 'Unknown';
+   }   
+}
+
+sub virt2srcl
+{
+   my $virt = shift;
+   return "called_virt2srcl($virt)";
+}
+
+sub addr2eocl
+{
+   my $addr_hex = shift;
+   my $addr     = hex $addr_hex;
+      $addr    += 63-($addr&63);
+   return pad_addr $addr_hex, ( sprintf '%x', $addr );
+}
+
+sub dec2hex
+{
+   return ( sprintf '%x', shift )
+}
+
+my @cache = ();
+my @addrs = ();
+my %srcls = ();
+my $block_idx = undef;
+while(<STDIN>)
+{
+   for my $f (@filters) { if( $f->{gb} == TRUE ) { s/$f->{re}/$f->{rp}/eeg; } else { s/$f->{re}/$f->{rp}/ee; } }
+   if( @filters )
+   {
+      print $_;
+      next; # todo: integrate with rest of processing instead
+   }
+
+   if( /^\s*\#\s*Stop\s+counting\s+for\s+tid/io )
+   {
+      push @cache, $_;
+   }
+   elsif( /\s+ICOUNT\s*\:\s*\d+\s+EXECUTIONS\s*\:\s*\d+/io )
+   {
+      push @cache, $_;
+      if( /\s+FN\s*\:\s+\S+\s+IMG\s*\:\s+\S+/io ){ $block_idx = undef; }else{ $block_idx = $#cache; }
+   }
+   elsif( @cache )
+   {
+      push @cache, $_;
+   }
+   else
+   {
+      print $_;
+   }
+   if( /^\s*MAPADDR\s+(0x)?(00)*([[:xdigit:]]+)\s+(\d+)\s+(.+)$/io )
+   {
+      $srcls{lc $3} = { line=>int $4, file=>$5 };
+   }
+   elsif( /^\s*XDIS\s+(0x)?(00)*([[:xdigit:]]+)\s*\:/io )
+   {
+      my $addr_hex = $3;
+      my $addr     = hex $addr_hex;
+      my $fidx     = find_symbol $addr;
+      if( $fidx > 0 )
+      {
+         my $module = $symbols[$fidx-1]{module};
+         if( defined $block_idx )
+         {
+            $_ = $cache[$block_idx];chomp;
+            my $name = exists $modules[$module]{path} ? $modules[$module]{path} : $modules[$module]{name};
+            $cache[$block_idx] = "$_  FN: $symbols[$fidx-1]{name}  IMG: $name\n";
+            $block_idx = undef;
+         }
+         if( !exists $srcls{lc $addr_hex} )
+         {
+            if( !@addrs || $addrs[$#addrs]{module} != $module )
+            {
+               push @addrs, { module=>$module, values=>[ $addr_hex ] };
+            }
+            else
+            {
+               push @{ $addrs[$#addrs]{values} }, $addr_hex;
+            }
+            $srcls{lc $addr_hex} = { line=>0, file=>'' }; # to remove dups
+         }
+         ( $symbols[$fidx-1]{base} <= $addr and ( $fidx > $#symbols or $addr < $symbols[$fidx]{base} ) ) or die;
+      }
+   }
+   elsif( /^\s*\#\s*EMIT_STATIC_STATS/io )
+   {
+      my ( $vals_fd, $vals_file ) = tempfile( 'addrs.XXXXXXXX', TMPDIR=>1, UNLINK=>1 ) or die;
+      foreach my $a (@addrs)
+      {
+         seek $vals_fd, 0, 0 or die;
+         truncate $vals_fd, 0 or die;
+         foreach my $v (@{ $a->{values} }){ print $vals_fd "$v\n"; }
+         my $name = exists $modules[$a->{module}]{path} ? $modules[$a->{module}]{path} : $modules[$a->{module}]{name};
+         my $cmd  = "$a2l -e $name <$vals_file |";
+         my $idx  = 0;
+         open LINES, $cmd or die;
+         while( <LINES> )
+         {
+            if( /^(.+)\:(\d+)$/o )
+            {
+               print "MAPADDR 0x$a->{values}[$idx] $2 $1\n" if $2 ne "0";
+            }
+            $idx++;
+         }
+         close LINES;
+      }
+      unlink0( $vals_fd, $vals_file );
+      print foreach @cache;
+      @cache = ();
+   }
+}
+
+exit 0;

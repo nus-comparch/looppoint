@@ -1,0 +1,41 @@
+#!/usr/bin/perl -w
+# Bug reports and comments to Igor.Ermolaev@intel.com
+use strict;
+
+use constant { FALSE=>0, TRUE=>-1 };
+
+my @cpus = ();
+foreach (@ARGV)
+{
+   push @cpus, int $_;
+}
+
+my $skip_cpu = FALSE;
+while( <STDIN> ) 
+{
+   if( /^(.*<\s*num_cpus\s*>\s*)(\d+)(\s*<\s*\/num_cpus\s*>.*)$/io )
+   {
+      my $shl = 0;
+      for my $cpu (@cpus) { $shl++ if $cpu < $2 }
+      print "$1".($2-$shl)."$3\n";
+   }
+   elsif( /^(.*<\s*cpu\s+num\s*=\s*"\s*)(\d+)(\s*"\s*>.*)$/io )
+   {
+      if( grep { $_ == $2 } @cpus )
+      {
+         $skip_cpu = TRUE;
+      }
+      else
+      {
+         my $shl = 0;
+         for my $cpu (@cpus) { $shl++ if $cpu < $2 }
+         print "$1".($2-$shl)."$3\n";
+      }
+   }
+   else
+   {
+      print $_ if !$skip_cpu;
+      $skip_cpu = FALSE if /<\s*\/cpu\s*>/io;
+   }
+}
+exit( 0 );

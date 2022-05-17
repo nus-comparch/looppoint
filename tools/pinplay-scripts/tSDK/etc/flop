@@ -1,0 +1,573 @@
+#!/usr/bin/perl -w
+
+## FLOPS Evaluation from SDE Instruction Mix and SDE Dynamic Mask Profile 
+## Written by Karthik Raman
+use strict;
+use warnings;
+
+use Getopt::Long;
+my $arch = 'snb';
+GetOptions('arch=s' => \$arch);
+
+# Mix Initialization 
+my @data_type = ();
+my @no_of_elem = ();
+my @event_count = ();
+my @text = ();
+
+my $fma_dp = 0;
+my $fma_sp = 0;
+
+my $dfma_dp = 0;
+my $dfma_sp = 0;
+
+
+# Mask Profile Initialization
+my @mask_event_count = ();
+my @mask_data_type = ();
+my @mask_text = ();
+
+
+my $flag=0;
+my %hash = ();
+my $key = 0;
+my @keys = ();
+my @values = ();
+my @dtype = ();
+my @rtype = ();
+my $fma_mask_dp = 0;
+my $fma_mask_sp = 0;
+my $keys_count=0;
+
+my $dp_fp_op = 0;
+my $sp_fp_op = 0;
+
+
+#Subroutine1
+sub MixOnly {
+# NOTES #
+# COUNTS ALL UNMASKED FLOP #
+# MASKED FLOP IS ANY ARE COUNTED AS FULL VECTORS #
+
+	open (my $in,'<',"$ARGV[0]") or die "Cannot open file \"$ARGV[0]\"";
+	
+    	print "Only SDE mix file given , so computing  UNMASKED FLOP + MASKED FLOP(if any) as FULL VECTORs\n\nMake sure you have used \"-iform 1\" for SDE mix collection\n\n";
+
+	my @out = 0;
+	while (<$in>)
+	{
+
+		if (/^\# EMIT_GLOBAL_DYNAMIC_STATS/ .. /^\# END_GLOBAL_DYNAMIC_STATS$/)
+		{	
+		push @out,$_;
+		}
+	}
+
+	close $in;
+	my $line_count = 0;	
+	$line_count=@out;
+	my $j = 0;
+	
+	for ($j = 0 ; $j < $line_count ; $j++)
+	{
+		if ($out[$j] =~ /^\*elements_fp_(.*)_(\d+)\s+(\d+)/)
+		{
+		push @text,$out[$j];
+		push @data_type,$1 ; 
+		push @no_of_elem,$2 ;
+		push @event_count,$3 ;
+		}
+
+# Count all elements with Mask as full vector 
+		if ($out[$j] =~ /^\*elements_fp_(.*)_(\d+)_masked\s+(\d+)/)
+		{
+		push @text,$out[$j];
+		push @data_type,$1 ; 
+		push @no_of_elem,$2 ;
+		push @event_count,$3 ;
+		}
+
+# Count all FMAs (MASK + NO MASK) - COUNT AS FULL VECTOR
+
+		if (($out[$j] =~ /^VFM(\D+)(\d+)(\w{2})_(\w{3})(.*)\s+(\d+)/) || ($out[$j] =~ /^VFN(\D+)(\d+)(\w{2})_(\w{3})(.*)\s+(\d+)/) )
+		{
+
+#		print "$out[$j]\n";		
+				if ($3 eq 'PD')
+				{	
+					if ($4 eq 'XMM')
+					{
+					$fma_dp += $6*2;
+					}
+
+					elsif ($4 eq 'YMM')
+					{
+					$fma_dp += $6*4;
+					}
+
+					elsif ($4 eq 'ZMM')
+					{
+					$fma_dp += $6*8;
+					}
+
+				}
+
+				if ($3 eq 'PS')
+				{
+					if ($4 eq 'XMM')
+					{
+					$fma_sp += $6*4;
+					}
+
+					elsif ($4 eq 'YMM')
+					{
+					$fma_sp += $6*8;
+					}
+
+					elsif ($4 eq 'ZMM')
+					{
+					$fma_sp += $6*16;
+					}
+				}
+
+				if ($3 eq 'SD')
+				{
+				$fma_dp += $6;
+				}
+
+				if ($3 eq 'SS')
+				{
+				$fma_sp += $6; 
+				}
+
+	          }
+
+# Taking SMADD into account (COUNT ALL SMADD MASK OR NO MASK AS FULL VECTORS)
+
+	     if (($out[$j] =~ /^VDFMADD(\w{2})_(\w{3})(.*)\s+(\d+)/) || ($out[$j] =~ /^VDFNMADD(\w{2})_(\w{3})(.*)\s+(\d+)/) )
+	     {
+
+		#print "$out[$j]\n";		
+				if ($1 eq 'PD')
+				{	
+					if ($2 eq 'XMM')
+					{
+					$dfma_dp += $4*2;
+					}
+
+					elsif ($2 eq 'YMM')
+					{
+					$dfma_dp += $4*4;
+					}
+
+					elsif ($2 eq 'ZMM')
+					{
+					$dfma_dp += $4*8;
+					}
+
+				}
+
+				if ($1 eq 'PS')
+				{
+					if ($2 eq 'XMM')
+					{
+					$dfma_sp += $4*4;
+					}
+
+					elsif ($2 eq 'YMM')
+					{
+					$dfma_sp += $4*8;
+					}
+
+					elsif ($2 eq 'ZMM')
+					{
+					$dfma_sp += $4*16;
+					}
+				}
+
+				if ($1 eq 'SD')
+				{
+				$dfma_dp += $4;
+				}
+
+				if ($1 eq 'SS')
+				{
+				$dfma_sp += $4; 
+				}
+
+	     }
+
+      }	
+
+}
+
+#Subroutine2
+sub MixAndMask {
+
+# NOTES #
+# COUNTS ALL UNMASKED FLOATS (COMPUTATION) FROM INSTRUCTION MIX #
+# COUNTS THE NON AVX512 FMA's ONE MORE TIME TO ACCOUNT FOR 2 FLOP PER FMA #
+# COUNTS ALL MASKED FLOATS (COMPUTATION) FROM DYNAMIC MASK PROFILE OUTPUT #
+# COUNTS ALL AVX512 FMA's WITH AND WITHOUT MASK FROM THE DYNAMIC MASK PROFILE OUTPUT ONE MORE TIME TO ACCOUNT FOR 2 FLOP PER FMA#
+
+
+	print "Computing true Masked and Unmasked FLOP\nMake sure you have used \"-iform 1\" for SDE mix collection\n";
+	
+	open my $in,'<',"$ARGV[0]" || die "Cannot open file \"$ARGV[0]\"";
+	my @out = 0;
+	while (<$in>)
+	{
+
+		if (/^\# EMIT_GLOBAL_DYNAMIC_STATS/ .. /^\# END_GLOBAL_DYNAMIC_STATS$/)
+		{
+		push @out,$_;
+		}
+	}
+
+	close $in;
+
+	my $line_count = 0;	
+	$line_count=@out;
+	my $j = 0;
+	
+	for ($j = 0 ; $j < $line_count  ; $j++)
+	{
+		if ($out[$j] =~ /^\*elements_fp_(.*)_(\d+)\s+(\d+)/)
+		{
+		#print "$out[$j]\n";
+		push @text,$out[$j];
+		push @data_type,$1 ; 
+		push @no_of_elem,$2 ;
+		push @event_count,$3 ;
+		}
+
+# Count all FMAs (NO MASK) FULL VECTOR
+#VFMADD213SD_XMMdq_XMMq_XMMq 
+		if (($out[$j] =~ /^VFM(\D+)(\d+)(\w{2})_(\w{3})(\D+)_(\D+)_(\D+)\s+(\d+)/) || ($out[$j] =~ /^VFN(\D+)(\d+)(\w{2})_(\w{3})(\D+)_(\D+)_(\D+)\s+(\d+)/) )
+		{
+
+#			print "$out[$j]\n";
+
+				if ($3 eq 'PD')
+				{	
+					if ($4 eq 'XMM')
+					{
+					$fma_dp += $8*2;
+					}
+
+					elsif ($4 eq 'YMM')
+					{
+					$fma_dp += $8*4;
+					}
+
+					elsif ($4 eq 'ZMM')
+					{
+					$fma_dp += $8*8;
+					}
+
+				}
+
+				if ($3 eq 'PS')
+				{
+					if ($4 eq 'XMM')
+					{
+					$fma_sp += $8*4;
+					}
+
+					elsif ($4 eq 'YMM')
+					{
+					$fma_sp += $8*8;
+					}
+
+					elsif ($4 eq 'ZMM')
+					{
+					$fma_sp += $8*16;
+					}
+				}
+
+				if ($3 eq 'SD')
+				{
+				$fma_dp += $8;
+				}
+
+				if ($3 eq 'SS')
+				{
+				$fma_sp += $8; 
+				}
+
+	          }
+
+	}
+	
+
+	open my $mask_in,'<',"$ARGV[1]" || die "Cannot open file \"$ARGV[1]\"";
+
+	while (<$mask_in>)
+	{
+
+        	if (/\<instruction-details\>/)
+        	{
+        	$key = $key + 1;
+        	$flag = 1;
+        	}	
+
+        	if ($flag == 1)
+        	{
+        	push(@{$hash{$key}}, $_);
+        	}
+
+        	if (/\<\/instruction-details\>/)
+        	{
+        	$flag = 0;
+        	}
+
+        	if (/\s+masked\s+mask\s+(\d+)b\s+(\d+)elem\s+(\d+)b\s+fp\s+\|\s+(\d+)\s+(\d+)\s+(\d+.\d+)/)
+        	{
+     		#print $_;
+	   	push @mask_text,$_;
+        	push @mask_data_type,$2;
+        	push @mask_event_count,$5;
+        	}
+
+
+	}
+
+	close $mask_in;
+	## FMA instructions 
+	my $i=0;
+
+	foreach $key ( sort {$a <=> $b } keys %hash )
+	{
+    		for $i ( 1 .. $#{ $hash{$key} } )
+		{
+			if (($hash{$key}[$i] =~ /\<disassembly\> vfm(\w+)(\d+)(\w{2})\s+(\w{3})(\d+)(.*)\s+\<\/disassembly\>/)|| ($hash{$key}[$i] =~ /\<disassembly\> vfn(\w+)(\d+)(\w{2})\s+(\w{3})(\d+)(.*)\s+\<\/disassembly\>/)) 
+			{
+		#	print $hash{$key}[$i];
+			push @dtype,$3;
+			push @rtype,$4;
+			push @keys,$key;
+			}
+    		}
+	}
+
+	$keys_count= @keys;
+	my $k=0;
+	my $l=0;
+	my $exec_count = 0;
+	my $comp_count = 0;
+
+
+
+	for ($k=0;$k<$keys_count; $k=$k+1)
+	{
+		for $l ( 1 .. $#{ $hash{$key} } )
+		{
+		 if ($hash{$keys[$k]}[$l])
+		 {
+			if ($hash{$keys[$k]}[$l] =~ /\<execution-counts\>\s+(\d+)\s+\<\/execution-counts\>/)
+			{	
+#			print "Exec Count $hash{$keys[$k]}[$l]\n";
+			$exec_count = $1;
+			}
+
+			if ($hash{$keys[$k]}[$l] =~ /\<computation-count\>\s+(\d+)\s+\<\/computation-count\>/)
+			{	
+#			print "Comp Count $hash{$keys[$k]}[$l]\n";
+			$comp_count = $1;
+			}
+		 }
+		} 
+
+		if (($dtype[$k] eq 'pd') or ($dtype[$k] eq 'sd'))
+		{
+		$fma_mask_dp += $exec_count * ($comp_count/$exec_count);
+		}
+		elsif (($dtype[$k] eq 'ps') or ($dtype[$k] eq 'ss')) 
+		{
+		$fma_mask_sp += $exec_count * ($comp_count/$exec_count);
+		}
+	}
+
+
+	$fma_mask_dp = $fma_mask_dp * (10 ** -9);
+	$fma_mask_sp = $fma_mask_sp * (10 ** -9);
+	#print "FMA MASK DP = $fma_mask_dp\nFMA MASK SP = $fma_mask_sp\n";
+}
+
+#Function Calls
+if ($#ARGV == 0 )
+{
+	&MixOnly();
+}
+elsif ($#ARGV == 1)
+{
+	&MixAndMask();
+}
+
+else
+{
+    print "No SDE mix file and mask profile passed as argument\n";
+    print "Usage: ./flops.pl <Instruction-Mix> <Dynamic-Mask-Profile>\n";
+    exit 1 ; 
+}
+
+#Subroutine3
+sub MixorMskCalc {
+	my $count = 0;
+	my $i = 0;
+	my $sp_fp_op1 = 0;
+	my $sp_fp_op2 = 0;
+	my $sp_fp_op4 = 0;
+	my $sp_fp_op8 = 0;
+	my $sp_fp_op16 = 0;
+
+	my $dp_fp_op1 = 0;
+	my $dp_fp_op2 = 0;
+	my $dp_fp_op4 = 0;
+	my $dp_fp_op8 = 0;
+	my $dp_fp_op16 = 0;
+
+	$count = @text;
+
+	for ($i = 0 ; $i < $count  ; $i++)
+	{
+
+		if ($data_type[$i] eq 'single')
+		{
+			if ($no_of_elem[$i] == 1)
+			{
+
+			$sp_fp_op1 += $event_count[$i] * $no_of_elem[$i];
+			}
+
+			if ($no_of_elem[$i] == 2)
+			{
+			$sp_fp_op2 += $event_count[$i] * $no_of_elem[$i];
+			}
+
+
+			if ($no_of_elem[$i] == 4)
+			{
+			$sp_fp_op4 += $event_count[$i] * $no_of_elem[$i];
+			}
+
+			if ($no_of_elem[$i] == 8)
+			{
+			$sp_fp_op8 += $event_count[$i] * $no_of_elem[$i];
+			}
+
+			if ($no_of_elem[$i] == 16)
+			{
+			$sp_fp_op16 += $event_count[$i] * $no_of_elem[$i];
+			}
+
+		}
+	
+		if ($data_type[$i] eq 'double')
+		{
+			if ($no_of_elem[$i] == 1)
+			{
+
+			$dp_fp_op1 += $event_count[$i] * $no_of_elem[$i];
+			}
+
+			if ($no_of_elem[$i] == 2)
+			{
+			$dp_fp_op2 += $event_count[$i] * $no_of_elem[$i];
+			}
+
+			if ($no_of_elem[$i] == 4)
+			{
+			$dp_fp_op4 += $event_count[$i] * $no_of_elem[$i];
+			}
+
+			if ($no_of_elem[$i] == 8)
+			{
+			$dp_fp_op8 += $event_count[$i] * $no_of_elem[$i];
+			}
+
+			if ($no_of_elem[$i] == 16)
+			{
+			$dp_fp_op16 += $event_count[$i] * $no_of_elem[$i];
+			}
+
+		}	
+
+	}
+#Evaluating the total Unmasked Floating Point Operations (FLOP)
+$dp_fp_op = ($dp_fp_op1 + $dp_fp_op2 + $dp_fp_op4 + $dp_fp_op8 + $dp_fp_op16 + $fma_dp + 4*$dfma_dp) * (10 ** -9);
+$dp_fp_op = sprintf "%.4f",$dp_fp_op,"\n";
+
+$sp_fp_op = ($sp_fp_op1 + $sp_fp_op2 + $sp_fp_op4 + $sp_fp_op8 + $sp_fp_op16 + $fma_sp + 4*$dfma_sp) * (10 ** -9);
+$sp_fp_op = sprintf "%.4f",$sp_fp_op,"\n";
+
+
+if ($#ARGV == 0 )
+{
+print "-" x 78,"\n";
+print "Unmasked + Masked (counted as full vectors) DP FLOP (Floating point Operations) = $dp_fp_op GFLOP\n";
+print "-" x 78,"\n";
+print "Unmasked + Masked (counted as full vectors) SP FLOP (Floating point Operations) = $sp_fp_op GFLOP\n";
+print "-" x 78,"\n";
+}
+elsif ($#ARGV == 1 )
+{
+print "-" x 60,"\n";
+print "Unmasked DP FLOP (Floating point Operations) = $dp_fp_op GFLOP\n";
+print "-" x 60,"\n";
+print "Unmasked SP FLOP (Floating point Operations) = $sp_fp_op GFLOP\n";
+print "-" x 60,"\n";
+}
+
+}
+
+#Subroutine4
+sub MaskOnlyCalc {
+#Evaluating the total Masked + Unmasked Floating Point Operations (FLOP)
+## Other Masked FLOP
+my $mask_count = 0;
+my $j = 0;
+$mask_count = @mask_text;
+
+	for ($j = 0 ; $j < $mask_count  ; $j++)
+	{
+		if ($mask_data_type[$j] == 8)
+		{
+		$dp_fp_op = $dp_fp_op + ($mask_event_count[$j] * (10 ** -9));
+		}
+
+		if ($mask_data_type[$j] == 16)
+		{
+		$sp_fp_op = $sp_fp_op + ($mask_event_count[$j] * (10 ** -9));
+		}
+
+	}
+
+## Adding FMA's
+$dp_fp_op = $dp_fp_op + $fma_mask_dp ;
+$sp_fp_op = $sp_fp_op + $fma_mask_sp ;
+
+##Rounding it ##
+$dp_fp_op = sprintf "%.4f",$dp_fp_op,"\n";
+$sp_fp_op = sprintf "%.4f",$sp_fp_op,"\n";
+
+print "True Masked + Unmasked DP FLOP (Floating point Operations) = $dp_fp_op GFLOP\n";
+print "-" x 60,"\n";
+print "True Masked + Unmasked SP FLOP (Floating point Operations) = $sp_fp_op GFLOP\n";
+print "-" x 60,"\n";
+
+
+}
+
+#Function Calls
+if ($#ARGV == 0 )
+{
+&MixorMskCalc();
+}
+
+if ($#ARGV == 1 )
+{
+&MixorMskCalc();
+&MaskOnlyCalc();
+}
+

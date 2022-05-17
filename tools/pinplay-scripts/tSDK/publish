@@ -1,0 +1,386 @@
+#!/bin/sh
+# Bug reports and comments to Igor.Ermolaev@intel.com
+base=$(dirname $(readlink -f ${BASH_SOURCE[0]:-$0}))
+tgts=( $TRACING_SDK_PUBLISH_PLTS SSE4.2:nhm AVX:snb AVX2,FMA:hsw LRB2:knc AVX512,AVX3:skx MIC-AVX512,AVX3.1:knl MIC-AVX512,SMADD,QMADD:knh )
+ichr='._:+^$()%#/\ '
+
+unset lits
+while [ $# -ne 0 ];do
+   if [ ! -f "$1" ];then break;fi
+   lits[${#lits[@]}]="$1"
+   shift
+done
+
+dst=$1
+if [ "$dst" == -gtr ];then
+   dst=''
+   suite="$2"
+   ver=''
+   var="${3:-1}"
+elif [ "$2" == -ctr ];then
+   suite=$(basename $(readlink -f "$PWD/../.."))
+   ver="${suite#*-}"
+   suite="${suite%%-*}"
+   if [ "$suite" == "$ver" ];then ver='';fi
+   var="$3"
+   re='^(v)?[0-9]+';if [[ ! "$var" =~ $re ]];then var="1${var:+-$var}";fi
+else
+   suite="$2"
+   ver="$3"
+   var="$4"
+fi
+if [ -z "$dst" ];then
+   dst=`mktemp -d`
+   delete_dst=true
+else
+   delete_dst=false
+fi
+bdir_rqrd=true
+group_by=ifm
+cmplr=unknown
+os=linux64
+trct=pin
+appt=64bit
+machine=sde
+
+suite="'${suite//:/':'}'";saveIFS="$IFS";IFS=':';eval recs=($suite);IFS="$saveIFS"
+suite="${recs[0]}";bset="${recs[1]}";blbl="${recs[2]}"
+suite=`echo "$suite"|tr "$ichr" -`
+bset=`echo "$bset"|tr "$ichr" -`
+bwkl="${ver%%:*}"
+if [ "$bwkl" == "$ver" ];then unset bwkl;else ver="${ver#*:}";fi
+bver="$ver"
+over="$ver";ver=`echo "$over"|tr "$ichr" -`
+ovar="$var";var=`echo "$ovar"|tr "$ichr" -`
+unset recs pkgs
+if [ "${#lits[@]}" -eq 0 ];then lits=(*.tbz2);fi
+for lit in "${lits[@]}";do
+   if [ "$lit" == '*.tbz2' ];then
+      echo;echo 'Error: No traces found';echo 
+      continue
+   fi
+   flit=$(readlink -f "$lit");lit=$(basename "$lit")
+   if [[ "$lit" == ${trct}_* ]] || [[ "$lit" == *_${trct}_* ]];then continue;fi
+   trace=${lit#w};trace=${trace#lit.}
+   if [ "$trace" == "$lit" ];then continue;fi
+   trace=${trace%.*}
+
+   eval desc=( `echo $lit|sed 's/^\(lcat\.\|lit\.\|wlit.\)\?\(R\([0-9]\+\)\.\)\?\(.\+\)\.\(\(SSE\|AVX\|FMA\|LRB\|SMADD\)\([0-9]\+\.\)*\)\(.*\.\)\?tbz2$/'"'"'\3'"' '"'\4'"' '"'\5'"' '"'\8'"'"'/'` )
+   owkl="$bwkl"
+   if [ -n "$blbl" ];then
+      if [ -z "$owkl" ];then owkl="${desc[1]}";fi
+      desc[1]="$blbl"
+   fi
+   wkl=`echo "$owkl"|tr "$ichr" -`
+   desc[2]=${desc[2]%\.}
+   desc[3]=${desc[3]%\.};desc[3]=${desc[3]#\.}
+
+   isa="${desc[2]}"
+   opt="${desc[3]}"
+   plt=''
+   ifm="$isa"
+   len=0
+   for tgt in ${tgts[*]};do
+      saveIFS=$IFS;IFS=':';lst=( $tgt );IFS=$saveIFS
+      for l in ${lst[0]//,/ };do
+         if [[ "$isa" == $l* ]];then
+            if [ ${#l} -gt $len ];then
+               len=${#l}
+               plt=${lst[1]}
+               ifm="${lst[0]%%,*}"
+            fi
+         fi
+      done
+   done
+
+   desc[1]=`echo "${desc[1]}"|tr "$ichr" -`
+   desc[2]=`echo "${desc[2]}"|tr "$ichr" -`
+   desc[3]=`echo "${desc[3]}"|tr "$ichr" -`
+
+   if [ -n "$var" ];then 
+      sfx=$var
+   else
+      sfx=''
+      dir=`basename $(dirname "$flit")|tr [:upper:] [:lower:]`
+      pfx=`echo $trace|tr [:upper:] [:lower:]`
+      if [[ $dir != $pfx.* ]];then
+         pfx=`echo $pfx|sed 's/^r[0-9]\+\.//'`
+         if [[ $dir != $pfx.* ]];then
+            pfx=`echo r${desc[0]}.${desc[1]}|tr [:upper:] [:lower:]`
+            if [[ $dir != $pfx.* ]];then
+               pfx=`echo ${desc[1]}|tr [:upper:] [:lower:]`
+            fi
+         fi
+      fi
+      if [[ $dir == $pfx.* ]];then
+         sfx=${dir#$pfx.}
+      fi
+      tmp=`echo $sfx|sed 's/^\(.\+\)\.v\?\([0-9]\+\)$/\2-\1/'`
+      if [ "$sfx" == "$tmp" ];then
+         re='^(v)?[0-9]+$';if [[ ! "$sfx" =~ $re ]];then sfx=1${sfx:+-$sfx};fi
+      else
+         sfx="$tmp"
+      fi
+   fi
+   if [[ "$sfx" =~ ^[0-9]+ ]];then sfx="v$sfx";fi 
+   sfx=$sfx${desc[3]:+-${desc[3]}}
+   sfx=${sfx:-v1}${desc[2]:+-${desc[2]}}
+   sfx=`echo $sfx|tr [:upper:] [:lower:]`
+   
+   machine=${plt}-xthreads.count
+   nameg=${bset:-$suite}
+   namet=${trct}_${nameg:--}_${desc[1]}${wkl:+-$wkl}_${ver:--}_${os}_compilers.version_${machine}_${sfx}_`date +%y%m`_`printf "%03d" ${desc[0]:-1}`.$plt
+   namet=`echo $namet|tr [:upper:] [:lower:]`
+   if [ $bdir_rqrd == true ];then
+      dirn=${suite:+$suite-}_${os}_${appt}_${trct}_`date +%Y%m`
+   else
+      dirn=${suite:+$suite-}${desc[1]}_${os}_${appt}_${trct}_`date +%Y%m`
+   fi
+
+   if [ -n "$bset" ];then appn="$bset-${desc[1]}";else appn="${desc[1]}${wkl:+-$wkl}";fi 
+   if [ -n "${desc[3]}" ];then appn="$appn-${desc[3]}";fi
+   appn=`echo $appn|tr [:upper:] [:lower:]`
+   dirn=`echo $dirn|tr [:upper:] [:lower:]`
+   
+   cur_dirn=''
+   for j in ${!pkgs[*]};do
+      pkg=${pkgs[$j]}
+      saveIFS=$IFS;IFS=':';lst=( $pkg );IFS=$saveIFS
+      if [ ${lst[0]} == $dirn ];then
+         cur_dirn=${lst[0]}
+         for i in $(seq 1 6 $(( ${#lst[*]} - 1 )) );do 
+            if [ "$appn" == ${lst[$i]} ] && [ "$plt" == ${lst[$((i+1))]} ] && [ $sfx == ${lst[$((i+2))]} ] && [ "$ver" == ${lst[$((i+3))]} ] && [ "$wkl" == "${lst[$((i+5))]}" ];then break 2;fi
+         done
+         pkgs[$j]="$pkg:$appn:$plt:$sfx:$ver:$ifm:$wkl"
+         break
+      fi
+   done
+   if [ -z "$cur_dirn" ];then
+      if [ $bdir_rqrd == true ];then
+         mkdir -p "$dst"
+      else
+         mkdir -p "$dst/$dirn/lit" "$dst/$dirn/report"
+      fi
+      pkgs[${#pkgs[*]}]="$dirn:$appn:$plt:$sfx:$ver:$ifm:$wkl"
+   fi
+   if [ $bdir_rqrd == true ];then
+      if [ $group_by == ifm ];then dirn="${dirn/_/${ifm}_}/$appn";else dirn="${dirn/_/${plt}_}/$appn";fi
+      dirn=`echo $dirn|tr [:upper:] [:lower:]`
+      [ -d "$dst/$dirn/lit" ] || mkdir -p "$dst/$dirn/lit" "$dst/$dirn/report"
+   fi
+   if [ -d "$dst/$dirn/lit" ];then
+      cur=$PWD;cd "$dst/$dirn/lit"
+      tar xfvj "$flit"
+      [ "$TRACING_SDK_PUBLISH_EXCL" == none ] || $base/thinout
+      if [ -r environment.txt ];then
+         cver=`grep -m 1 -e 'Compiler.* for applications running on Intel.*Build [0-9]*[0-9]' environment.txt|awk '{print $NF;}'`
+         if [ -n "$cver" ];then
+            cmplr=icc
+         else
+            cver=`grep -A 1 -m 1 -e 'Compiler.* for applications running on Intel' environment.txt|awk 'END{print $2,$3,$4;}'`
+            if [ -n "$cver" ];then cmplr=icc;fi
+            cver=`date -d"$cver" +%Y%m%d 2>/dev/null`
+         fi
+         user=`grep -m 1 '^USER=' environment.txt|awk -F '=' '{print $2}'`
+         sver=`grep -m 1 -e 'Intel\S* Software Development Emulator\.  Version\:' environment.txt|awk '{print $6}'`
+      fi
+      if [ -z "$cver" ];then cver=unknown;fi
+      if [ -z "$user" ];then user="$USER";fi
+      if [ -z "$sver" ];then sver=unknown;fi
+      for file in *.bz2;do
+         [ -f $file ] && bzip2 -d $file
+      done
+      for file in *.ami *.wmi *.arch.xml *.syminfo.xml *.procinfo.xml *.lit *.cmd *.cat *.tzcat *.ptov *.address;do
+         [ -f $file ] && gzip $file
+      done
+      [ -f *.syminfo.xml.gz ] && rename .syminfo.xml.gz .procinfo.xml.gz *.syminfo.xml.gz
+      [ -f pinlit64.*[0-9].tzcat.gz ] && mv pinlit64.*[0-9].tzcat.gz pinlit64.tzcat.gz
+      num_cpus=1
+      if [ -f pinlit64*.arch.xml.gz ];then
+         num_cpus=`gzip -dc pinlit64*.arch.xml.gz|grep -m 1 '<num_cpus>'|sed 's/^\s*<num_cpus>\([0-9]\+\)<\/num_cpus>\s*$/\1/'`
+         if [ -n "$num_cpus" ] && [ $num_cpus -eq 1 ];then
+            for file in ami wmi cmd lit arch.xml procinfo.xml warmup.ptov ptov;do
+               [ -f pinlit64.*[0-9].$file.gz ] && mv pinlit64.*[0-9].$file.gz pinlit64.$file.gz
+            done
+            [ -f pinlit64.*[0-9].mfp.tzcat.gz ] && mv pinlit64.*[0-9].mfp.tzcat.gz pinlit64.mfp.tzcat.gz
+         fi
+      fi
+      for file in pinlit64.*[0-9].result *.global.log pintool.log sim.out sim.csv sim.disasm sim.s environment.txt profile.csv distrib.txt algn-out.txt clc-out.txt mix-out.txt msk-out.txt lcat.out coverage.txt coverage.sw.txt coverage.wm.txt baseline.txt groups.txt groups.bl.txt groups.sw.txt flow.disasm flow.s *.mfp.tzcat.gz *.ptov.gz *.address.gz *.sift loop.*.s func.*.s call.*.s path.*.s precond.*.tbz2;do
+         [ -f $file ] && mv $file ../report
+      done
+      if [ -f "$cur/$trace.disasm" ];then 
+         cp -u "$cur/$trace.disasm" ../report
+         if [ -x $base/analyze ];then
+            if [ -f pinlit64.procinfo.xml.gz ];then syminfo=pinlit64.procinfo.xml.gz;else syminfo='';fi
+            if [ -f pinlit64.tzcat.gz ];then warmup='';else warmup=' -warmup';fi
+            $base/analyze ../report/$trace.disasm${warmup}${syminfo:+ $syminfo} >../report/$trace.s
+            if [ -f ../report/profile.csv ];then
+               quality=`cat ../report/$trace.s|$base/quality ../report/profile.csv`
+               echo >>../report/$trace.s;echo >>../report/$trace.s;echo ';*** Quality:' >>../report/$trace.s;echo $quality>>../report/$trace.s
+            fi
+         fi
+      fi
+      name=${namet/_compilers.version_/_${cmplr}-${cver}_}
+      name=${name/-xthreads.count/-x$num_cpus}
+      for dir in . ../report;do
+         cd $dir
+         files=(*)
+         for file in "${files[@]}";do
+            if [[ $file == pinlit64\.* ]];then
+               mv $file ${file/#pinlit64./$name.}
+            elif [[ $file == lcat\.* ]];then
+               mv $file ${file/#lcat./$name.}
+            elif [[ $file == $trace\.* ]];then
+               mv $file ${file/#$trace./$name.}
+            elif [[ $file != ${trct}_* ]];then
+               mv $file $name.$file
+            fi
+         done
+      done
+      [ -f "$cur/traceinfo.xml" ] && cp -u "$cur/traceinfo.xml" ../${name/_[0-9][0-9][0-9]./.}.traceinfo.xml
+      [ -f "$cur/weights.$isa${opt:+.$opt}.txt" ] && cp -u "$cur/weights.$isa${opt:+.$opt}.txt" ../${name/_[0-9][0-9][0-9]./.}.weights.txt
+      cd "$cur"
+   else
+      echo 
+      echo Can\'t create or access destination directory, skipping... #'
+   fi
+done
+tmp=`mktemp`
+cur="$PWD";cd "$dst"
+for pkg in ${pkgs[*]};do
+   saveIFS=$IFS;IFS=':';lst=( $pkg );IFS=$saveIFS
+
+   name=${lst[0]}
+   wkl=${lst[6]};apps=${lst[1]};plts=${lst[2]};sfxs=${lst[3]};avrs=${lst[1]}-${lst[4]};ifms=${lst[5]}
+   for i in $(seq 7 6 $(( ${#lst[*]} - 1 )) );do
+      wkl=${lst[$((i+5))]}
+      apps="$apps ${lst[$i]}"
+      plts="$plts ${lst[$((i+1))]}"
+      sfxs="$sfxs ${lst[$((i+2))]}"
+      avrs="$avrs ${lst[$i]}-${lst[$((i+3))]}"
+      ifms="$ifms ${lst[$((i+4))]}"
+   done
+   #apps=`echo $apps|tr [:blank:] "\n"|sort -u|xargs echo|tr [:blank:] -`
+   #plts=`echo $plts|tr [:blank:] "\n"|sort -u|xargs echo`
+   #sfxs=`echo $sfxs|tr [:blank:] "\n"|sort -u|xargs echo|tr [:blank:] -`
+   apps=`echo $apps|tr '[:space:]' '\000'|sort -uz|sed -e 's/\x00$//' -e 's/\x00/-/g'`
+   plts=`echo $plts|tr '[:space:]' '\000'|sort -uz|sed -e 's/\x00$//' -e 's/\x00/ /g'`
+   sfxs=`echo $sfxs|tr '[:space:]' '\000'|sort -uz|sed -e 's/\x00$//' -e 's/\x00/-/g'`
+   avrs=`echo $avrs|tr '[:space:]' '\000'|sort -uz|sed -e 's/\x00$//' -e 's/\x00/-/g'`
+   ifms=`echo $ifms|tr '[:space:]' '\000'|sort -uz|sed -e 's/\x00$//' -e 's/\x00/ /g'|tr '[:upper:]' '[:lower:]'`
+ 
+   unset ldrs
+   if [ $group_by == ifm ];then grps="$ifms";else grps="$plts";fi
+   for grp in $grps;do
+      if [ $bdir_rqrd == true ];then
+         dirn=${name/_/${grp}_}
+         wdrs=( `echo "$dirn/*"` )
+      else
+         wdrs=( "$dirn" )
+      fi
+      ldrs=${ldrs:+$ldrs }"$dirn"
+      pdir="$PWD"
+      for wdir in "${wdrs[@]}";do
+         if [ ! -d "$wdir" ];then continue;fi
+         cd "$wdir"
+         for tinfo in *.traceinfo.xml;do
+            if [ $tinfo == '*.traceinfo.xml' ];then break;fi
+         
+            iname=${tinfo%.traceinfo.xml}
+            tmask=`echo $iname|sed 's/\.\([^.]\+\)$/_*.\1/'`
+            saveIFS=$IFS;IFS='
+';             list=( `ls -1 report/$tmask.0.result 2>/dev/null|sort -u` )
+               if [ ${#list[@]} -eq 0 ];then list=( `ls -1 report/$tmask.pintool.log 2>/dev/null|sort -u` );fi
+            IFS=$saveIFS
+            unset ins_cnts rdcs cpis weights cvrg ttl_ins wcsv
+            ttl_cnt=0
+            ttl_rdc=0
+            for res in "${list[@]}";do
+               ins_cnt=`grep -m 1 -w inscount $res|awk '{print $2}'`
+               if [ -z "$ins_cnt" ];then ins_cnt=`grep -m 1 'Length with extra' $res|awk '{print $6}'`;fi
+               if [ -z "$ins_cnt" ];then ins_cnt=0;fi
+               ins_cnts[${#ins_cnts[@]}]=$ins_cnt
+               (( ttl_cnt += ins_cnt ))
+               tname=$(basename $res);tname=${tname%.0.result};tname=${tname%.pintool.log}
+               reduced=`grep -m 1 ^Reduced\: report/$tname.coverage.sw.txt 2>/dev/null|sed -n 's/^.*:\s\+\(.\+\)%$/\1/p'`
+               if [ -z "$reduced" ];then reduced=`grep -m 1 ^Reduced\: report/$tname.coverage.txt 2>/dev/null|sed -n 's/^.*:\s\+\(.\+\)%$/\1/p'`;fi
+               if [ -z "$reduced" ];then reduced=`grep -m 1 ^Quality\: report/$tname.coverage.txt 2>/dev/null|sed -n 's/^.*:\s\+\(.\+\)%$/\1/p'`;fi
+               if [ -z "$reduced" ];then reduced=0;fi
+               rdcs[${#rdcs[@]}]=$reduced
+               ttl_rdc=`echo $ttl_rdc+$reduced|bc`
+               cpi=`grep -m 1 '^pCPI' report/$tname.groups.txt|awk '{print $3}'`
+               if [ -z "$cpi" ];then cpi=`grep -m 1 '^eCPI' report/$tname.groups.txt|awk '{print $3}'`;fi
+               cpis[${#cpis[@]}]=$cpi
+            done
+            if [ -s "$iname.weights.txt" ];then
+               weights=( `grep -m 1 '^Weights' "$iname.weights.txt"|awk '{for(i=4;i<=NF;i++){print $i," "}}'` )
+               cvrg=`grep -m 1 '^Weights' "$iname.weights.txt"|sed -n 's/^.*%->\(.\+\)%.*$/\1/;p'`
+               cvrg="${cvrg%%\%(*}"
+               ttl_ins=`grep -m 1 '^pInstrs' "$iname.weights.txt"|awk '{print $2}'`
+               if [ -z "$ttl_ins" ];then ttl_ins=`grep -m 1 '^eInstrs' "$iname.weights.txt"|awk '{print $2}'`;fi
+               rm "$iname.weights.txt"
+            fi
+                                 
+            # need to extract desc[1],owkl,over
+            sed -e 's|__cnt_name__|'"$user"'|g' -e 's|__wrk_name__|'"${desc[1]}${owkl:+ $owkl}"'|g' -e 's|__wrk_version__|'"$over"'|g' -e 's|__wrk_compiler__|'"$cmplr $cver"'|g' -e 's|__trc_coverage__|'"$cvrg"'|g' -e 's|__trc_version__|'"$ovar"'|g' -e 's|__sde_version__|'"SDE $sver"'|g' $tinfo >$tmp
+            sed -n '1,/<traces>/p' $tmp >$tinfo
+            trc_cnt=${#list[*]}
+            twcsv=$iname.traceweights.csv
+            echo '<trace-details trace-count="'$trc_cnt'" total-instruction-count="'${ttl_ins:--1}'" publication-workweek="'`date +%V`'" publication-year="'`date +%Y`'">' >>$tinfo
+            ttl_clk=0.0
+            for i in "${!list[@]}";do
+               tname=$(basename ${list[$i]});tname=${tname%.0.result};tname=${tname%.pintool.log}
+               weight="${weights[$i]}"
+               if [ -z "$weight" ];then weight=`grep -m 1 ^weight: ${list[$i]} 2>/dev/null`;fi
+               if [ -z "$weight" ] && [ "$ttl_rdc" != 0 ];then weight=`echo scale=5\;${rdcs[$i]}/$ttl_rdc|bc|sed 's/^\./0./'`;fi
+               if [ -z "$weight" ];then weight=`echo scale=5\;1/$trc_cnt|bc|sed 's/^\./0./'`;fi
+               echo '<trace-data trace-name="'$tname'" workload-cpi="'${cpis[$i]}'" instruction-count="'${ins_cnts[$i]}'"><trace-weight method="tSDK" weight="'$weight'"> </trace-weight> </trace-data>' >>$tinfo
+               if [ -n "$ttl_ins" ];then
+                  irep=`echo "scale=0;$ttl_ins*$weight/1"|bc`
+                  pins=`echo "scale=2;$weight*100/1"|bc`
+                  crep=`echo "scale=0;${cpis[$i]}*$irep/1"|bc`
+                  wcsv[${#wcsv[@]}]="$tname,-1,${ins_cnts[$i]},${cpis[$i]},$irep,$pins,$crep"
+                  ttl_clk=`echo "scale=0;$ttl_clk+$crep"|bc`
+               fi
+            done
+            echo '</trace-details>' >>$tinfo
+            sed '1,/<traces>/d' $tmp >>$tinfo
+            if [ -n "$ttl_ins" ];then
+               echo 'Trace Name,Offset,Length,CPI,IREP,%instructions,CREP,%Cycles' >$twcsv
+               for i in "${!list[@]}";do
+                  crep="${wcsv[$i]##*,}"
+                  pclk=`echo "scale=2;$crep*100/$ttl_clk"|bc`
+                  echo "${wcsv[$i]},$pclk" >>$twcsv
+               done
+            fi
+         done
+         cd "$pdir"
+      done
+   done
+   
+   if [ $bdir_rqrd == true ];then
+      #name="${name/_/${apps}-${sfxs}_}"
+      name="${name/_/${avrs}-${sfxs}_}"
+   else
+      name="$name-$sfxs"
+   fi
+   chmod o-w,ug+rwX,o+rX $ldrs -R
+   tar -cvj --remove-files -f $name.tbz2 $ldrs
+   for dirn in $ldrs;do
+      if [ $bdir_rqrd == true ];then
+         if [ -d "$dirn" ];then
+            rmdir "$dirn"/*/lit
+            rmdir "$dirn"/*/report
+            rmdir "$dirn"/* "$dirn"
+         fi
+      else
+         [ -d $dirn ] && rmdir $dirn/lit $dirn/report $dirn
+      fi
+   done
+done
+cd "$cur"
+rm -f $tmp
+if [ $delete_dst == true ];then
+   mv "$dst/$name.tbz2" "$cur/$name.tbz2"
+   rmdir "$dst"
+fi

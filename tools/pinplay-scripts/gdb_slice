@@ -1,0 +1,293 @@
+#!/bin/bash
+
+#example: gdb_replay  -- pinball-basename bin
+#set -x
+
+Usage()
+{
+  echo "Usage : `basename $0` --replay <options> -- pinball-basename program-binary"
+  echo "OR `basename $0` --native <options> -- program-binary args"
+  echo "OR `basename $0` --record <options> -- program-binary args"
+  echo "options:"
+  echo " --replay : Replay + Slicing"
+  echo " --record : Recording + Slicing"
+  echo " --native : Slicing with native(Pin) run."
+  echo " --help : Print help message"
+  echo " --pintool=<path to pintool> : use the specified tool instead of pinplay-driver"
+  echo " --pintool_help : Print help from pintool"
+  echo " --pin_options=<"pin options">: Options for Pin in double quotes"
+  echo " --pintool_options=<"pintool options">: Options for the pintool in double quotes"
+  echo " --arch=(\"intel64\" | \"ia32\") : default \"intel64\" "
+  echo " --cross_os : Use address translation for text/data."
+}
+
+ERROR()
+{
+  Usage
+  exit
+}
+
+CheckGDBVersion()
+{
+  version=`gdb --version | head -1 | awk '{print $NF}' | sed -r 's/([0-9]*\..).*/\1/'`
+  #echo "GDB version (truncated): $version"
+  too_old=`echo "$version<7.4" | bc`
+  if [ $too_old -eq 1 ]; then
+    echo "GDB in PATH ($version) is older than version 7.4. Please put a newer GDB in PATH."
+    exit
+  fi
+}
+
+
+if [ "$GDB" == "" ]; then
+  GDB=`which gdb`
+fi
+
+find_kit_location()
+{
+    pinplay_kit=`echo $0 | grep -c extras`
+    if [ $pinplay_kit -eq 1 ];
+    then
+        PIN_ROOT=`echo $0 | sed '/extras.*/s///'`
+        SDEHOME=""
+    else
+        PIN_ROOT=""
+        SDEHOME=`echo $0 | sed '/pinplay-scripts.*/s///'`
+    fi
+}
+
+find_kit_location
+
+count=0
+compression="bzip2"
+
+command=""
+dashes=0
+pintool_options=""
+default_logger_options=" -log:whole_image -log:pages_early 1 -log:whole_stack -pinplay:max_threads 128 "
+pin_options=""
+help_sought=0
+pintool_help_sought=0
+pin_arch="intel64"
+pinball_seen=0
+pinball=""
+cross_os=0
+bin=""
+native_run=0
+record_run=0
+replay_run=0
+if [ $pinplay_kit -eq 1 ];
+then
+    master="$PIN_ROOT/pin"
+    pintool="$PIN_ROOT/extras/pinplay/bin/$pin_arch/dart-driver.so"
+    nullapp="$PIN_ROOT/extras/pinplay/bin/$pin_arch/nullapp"
+    default_pin_options=" -follow_execv "
+else
+    master="$SDEHOME/sde"
+    pintool="sde-dart-driver.so"
+    nullapp="$SDEHOME/$pin_arch/nullapp"
+    default_pin_options=" -p -follow_execv "
+fi
+
+
+for arg in "$@"
+do
+    case "$arg" in
+    --arch=*) pin_arch=`echo $arg | sed '/--arch=/s///'`
+           ;;
+    --cross_os) cross_os=1
+           ;;
+    --pin_options=*) pin_options=`echo $arg | sed '/--pin_options=/s///'`
+           ;;
+    --pinball=*) pinball=`echo $arg | sed '/--pinball=/s///'`
+            pinball_seen=1
+           ;;
+    --pintool=*) pintool=`echo $arg | sed '/--pintool=/s///'`
+           ;;
+    --pintool_options=*) pintool_options=`echo $arg | sed '/--pintool_options=/s///'`
+           ;;
+    --native) native_run=1
+        if ([ $record_run -eq 1 ] || [ $replay_run -eq 1 ]);
+        then
+            echo "Can provide ONLY one of '--record', '--replay', or '--native'"
+            exit
+        fi
+           ;;
+    --record) record_run=1
+        if ([ $native_run -eq 1 ] || [ $replay_run -eq 1 ]);
+        then
+            echo "Can provide ONLY one of '--record', '--replay', or '--native'"
+            exit
+        fi
+           ;;
+    --replay) replay_run=1
+        if ([ $native_run -eq 1 ] || [ $record_run -eq 1 ]);
+        then
+            echo "Can provide ONLY one of '--record', '--replay', or '--native'"
+            exit
+        fi
+           ;;
+     --) dashes=1
+           ;;
+     --help) help_sought=1
+           ;;
+     --pintool_help) pintool_help_sought=1
+           ;;
+          
+     *)  if [ $dashes -eq 1 ];
+         then
+            if [ $replay_run -eq 1 ];
+            then
+                # only grab the two item after "--" as "pinball" and "bin"
+                if [[ -z $pinball ]];
+                then
+                    pinball=$arg
+                else
+                    bin=$arg
+                    break  # ignore rest of the items after first two
+                fi
+            else 
+                command=$command" "$arg
+                if [ -z $bin ];
+                then
+                    #first item after '--' is 'bin'
+                    bin=$arg
+                fi
+            fi
+         else
+            echo "Unrecognized token " $arg
+            exit
+         fi
+         ;;
+    esac
+done
+pintool_options=$pintool_options
+pin_options=$pin_options$default_pin_options
+
+if [ $help_sought -eq 1 ];
+then
+   Usage
+   exit
+fi
+
+if [ $pinplay_kit -eq 1 ];
+then
+    if [[ ! -e $pintool ]];
+    then
+        echo "Pintool $pintool does not exist."
+        echo "Please provide ' --pintool=<path to pintool> (default dart-driver.so)'"
+        exit
+    fi
+fi
+
+
+if [ $pintool_help_sought -eq 1 ];
+then
+   $master $pin_options -t $pintool -help -- /bin/ls 2>& 1 | more
+   exit
+fi
+
+if ([ $record_run -eq 0 ] && [ $native_run -eq 0 ] && [ $replay_run -eq 0 ]);
+then
+  echo "Must provide one of '--record', '--replay', or '--native'"
+  exit
+fi
+
+if [[ $dashes -eq 0 ]];
+then
+    echo "Must provide ' -- <pinball-basename> <binary-name> '"
+    exit
+fi
+
+if ([ $replay_run -eq 1 ] && [ ! -e $pinball.address ]);
+then
+    echo "$pinball.address does not exist."
+    echo "Please provide ' -- <valid pinball-basename> <binary-name> '"
+    exit
+fi
+
+if [[ ! -e $bin ]];
+then
+    echo "binary $bin does not exist."
+    echo "Please provide ' -- <pinball-basename> <valid binary-name> '"
+    exit
+fi
+
+if [[ ! -x $bin ]];
+then
+    echo "$bin is not executable/debuggable."
+    echo "Please provide ' -- <pinball-basename> <valid binary-name> '"
+    exit
+fi
+
+CheckGDBVersion
+
+rm -f .gdb.cmd.$USER
+
+if [[ $replay_run -eq 1 ]];
+then
+    if ([ $pinball_seen -eq 1 ])
+        then
+            echo "--pinball= not to be used with --replay"
+            exit
+    fi
+    if [[ $cross_os -eq 0 ]];
+    then
+        if [ $pinplay_kit -eq 1 ];
+        then
+            $master $pin_options -appdebug -xyzzy -reserve_memory $pinball.address -t $pintool  -xyzzy -gdb:cmd_file .gdb.cmd.$USER -trace 1  -replay -replay:basename $pinball $pintool_options  -- $bin &
+        else
+            $master $pin_options -p -appdebug -p -xyzzy -p -reserve_memory -p $pinball.address -t $pintool  -xyzzy -gdb:cmd_file .gdb.cmd.$USER -trace 1  -replay -replay:playout -replay:basename $pinball $pintool_options  -- $bin &
+        fi
+    else
+        if [ $pinplay_kit -eq 1 ];
+        then
+            $master $pin_options -appdebug -t $pintool  -xyzzy -gdb:cmd_file .gdb.cmd.$USER -trace 1  -replay -replay:addr_trans -replay:basename $pinball $pintool_options  -- $bin &
+        else
+            $master $pin_options -p -appdebug -t $pintool  -xyzzy -gdb:cmd_file .gdb.cmd.$USER -trace 1  -replay -replay:playout -replay:addr_trans -replay:basename $pinball $pintool_options  -- $bin &
+        fi
+    fi
+fi
+
+if [[ $native_run -eq 1 ]];
+then
+    if [ $pinplay_kit -eq 1 ];
+    then
+        $master $pin_options -appdebug -t $pintool  -xyzzy -gdb:cmd_file .gdb.cmd.$USER -trace 1  $pintool_options  -- $command &
+    else
+        $master $pin_options -p -appdebug -t $pintool  -xyzzy -gdb:cmd_file .gdb.cmd.$USER -trace 1  $pintool_options  -- $command &
+    fi
+fi
+
+if [[ $record_run -eq 1 ]];
+then
+    pintool_options=$pintool_options$default_logger_options
+    if [ $pinball_seen -eq 0 ];
+    then
+        pinball="pinball/log"
+    fi
+    if [ $pinplay_kit -eq 1 ];
+    then
+        $master $pin_options -appdebug -t $pintool  -trace 1 -xyzzy -log -log:mt -log:region_id -log:basename $pinball -log:controller_default_start 0 -gdb:cmd_file .gdb.cmd.$USER -log:compressed ${compression} $pintool_options  -- $command &
+    else
+        $master $pin_options -p -appdebug -t $pintool  -trace 1 -xyzzy -log:mt -log -log:region_id -log:basename $pinball -controller_default_start 0 -gdb:cmd_file .gdb.cmd.$USER -log:compressed ${compression} $pintool_options  -- $command &
+    fi
+fi
+
+count=0
+until grep 'target remote' .gdb.cmd.$USER > /dev/null 2>&1 || test $count -gt 30; \
+        do sleep 1; count=`expr $count + 1`; done
+
+sleep 2.0
+
+echo "set remotetimeout 30000" >> .gdb.cmd.$USER
+if [ $pinplay_kit -eq 1 ];
+then
+    echo "source $PIN_ROOT/extras/pinplay/scripts/dart.py" >> .gdb.cmd.$USER
+    export PYTHONPATH=$PIN_ROOT/extras/pinplay/scripts/
+else
+    echo "source $SDEHOME/pinplay-scripts/dart.py" >> .gdb.cmd.$USER
+    export PYTHONPATH=$SDEHOME/pinplay-scripts/
+fi
+
+$GDB --command=.gdb.cmd.$USER $bin

@@ -1,0 +1,31 @@
+#!/bin/sh
+# Bug reports and comments to Igor.Ermolaev@intel.com
+base=$(dirname $(readlink -f ${BASH_SOURCE[0]:-$0}))
+trace=$1
+if [ "$trace" == -warmup ];then
+   action=-warmup
+   if [ -n "$2" ];then TRACING_SDK_STRACE=$2;shift; fi
+else
+   action=-pinlit2
+fi
+if [ $# -gt 1 ] || [ $action == -warmup ];then 
+   shift
+   source $base/gather $action "$@"
+fi
+strace=$TRACING_SDK_STRACE
+if [ -z "$strace" ] || [ ! -d "$strace" ];then
+   echo
+   echo Error: Trace isn\'t found #'
+   echo
+   exit
+fi
+anchor=`ls -t1 $strace/{loop,func,call,path}.*.s 2>/dev/null|head -n 1|xargs basename`
+isa=$(basename $anchor .s);isa="${isa#loop.}";isa="${isa#func.}";isa="${isa#call.}";isa="${isa#path.}"
+precnd=$strace/precond.$isa.tbz2;if [ -r "$precnd" ];then precnd=$(basename $precnd); else unset precnd; fi
+deps=`sed -n 's/^;\s\+dependencies:\s\+\(.\+\)/\1/p' "$strace/$anchor"|xargs echo`
+if [ "$trace" == -warmup ];then
+   cur=$PWD;cd $strace;$base/pack_trace "$cur/${strace/#wrm./wlit.}" $anchor${precnd:+ $precnd}${deps:+ $deps};cd $cur
+else
+   rm -rf rgn.$trace.$isa;mv $strace rgn.$trace.$isa;strace=rgn.$trace.$isa
+   cur=$PWD;cd $strace;$base/pack_trace "$cur/lit.$trace.$isa" $anchor${precnd:+ $precnd}${deps:+ $deps};cd $cur
+fi

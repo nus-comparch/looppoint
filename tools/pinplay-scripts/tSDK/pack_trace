@@ -1,0 +1,28 @@
+#!/bin/sh
+# Bug reports and comments to Igor.Ermolaev@intel.com
+name=$1
+shift 1
+cmd=''
+files="pinlit64.result pinlit64.global.log baseline.txt coverage.sw.txt coverage.wm.txt coverage.txt distrib.txt groups.txt groups.bl.txt groups.sw.txt profile.csv flow.disasm flow.s\
+       pinlit64.cmd pinlit64.cpuid.def pinlit64.lit pinlit64.stats pinlit64.wmi pinlit64.ami pinlit64.arch.xml pinlit64.procinfo.xml pinlit64.syminfo.xml pinlit64.address pinlit64.ptov pinlit64.warmup.ptov pinlit64.cat pinlit64.tzcat pinlit64.mfp.tzcat pintool.log\
+       pinlit64.sift sim.out sim.csv sim.disasm sim.s environment.txt\
+       algn-out.txt clc-out.txt mix-out.txt msk-out.txt lcat.out lcat.tzcat log.txt"
+for file in $files; do
+   for sfx in '' .gz .bz2; do
+      if [ -f $file$sfx ]; then cmd=${cmd:+$cmd }$file$sfx; fi
+      list=( $file.*[0-9]$sfx ); if [ "$list" != $file'.*[0-9]'$sfx ]; then cmd=${cmd:+$cmd }"${list[@]}"; fi
+      list=( ${file%%.*}.*[0-9].${file#*.}$sfx ); if [ "$list" != ${file%%.*}'.*[0-9].'${file#*.}$sfx ]; then cmd=${cmd:+$cmd }"${list[@]}"; fi
+   done
+done
+while [ $# -ne 0 ]; do
+   if [ -f $1 ]; then
+      file=$(basename $1)
+      re='(^|\s)$file(\$|\s)';if [[ ! "$cmd" =~ $re ]]; then
+         path=$(dirname $1)
+         if [ $path != "." ]; then file="-C $path $file"; fi
+         cmd=$file${cmd:+ $cmd}
+      fi
+   fi
+   shift
+done
+tar cfvj ${name}.tbz2 $cmd

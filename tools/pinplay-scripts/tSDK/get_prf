@@ -1,0 +1,392 @@
+#!/bin/sh
+# Bug reports and comments to Igor.Ermolaev@intel.com
+base=$(dirname $(readlink -f ${BASH_SOURCE[0]:-$0}))
+bin_dir=bin;if [ `uname -m` == x86_64 ];then bin_dir=${bin_dir}64; fi
+
+prof="$1"
+if [ "$prof" == '--version' ];then
+   [ ! -x $base/iptu/bin/vtsarun       ] || $base/iptu/bin/vtsarun --version
+   [ ! -x $base/sep/$bin_dir/sep       ] || $base/sep/$bin_dir/sep -version
+   [ ! -x $base/axe/$bin_dir/amplxe-cl ] || $base/axe/$bin_dir/amplxe-cl --version
+   exit
+fi
+
+sav=${2//B/000000000};sav=${sav//M/000000};sav=${sav//K/000}
+shift 2
+
+if [ "$sav" == -normalize ];then
+   re='[ ,()]';if ( [ "$prof" == function ] && [ "$1" == module ] ) || [ "$prof" == '<unknown(s)>' ] || [[ "$prof" =~ $re ]];then
+      printf '%s' "$prof"
+   else
+      key=`echo "$prof"|tr [:upper:] [:lower:]`
+      cnt=`$base/binutils/bin/nm -n "$1" 2>/dev/null|grep -v ' .debug'|tr [:upper:] [:lower:]|grep -m 1 -c -P '(_mp_|\s)\Q'"$key"'\E[_]*(\.|\d)*$'`
+      if [ $cnt -gt 0 ];then
+         printf '%s' "$prof"
+      else
+save_IFS=$IFS;IFS='
+';       addrs=( `$base/binutils/bin/objdump -Wi -w "$1" 2>/dev/null|grep -A 10 -P '\s+DW_AT_name\s+.*:\s+\Q'"$key"'\E\s*$'|grep low_pc|awk '{printf "%x\n", strtonum($4)}'` );IFS=$save_IFS
+         name=''
+         for addr in "${addrs[@]}";do
+            name=`$base/binutils/bin/nm -n "$1" 2>/dev/null|grep -v ' .debug'|grep -m 1 -i '\(0x\)\?0*'$addr'[[:space:]]'|awk '{print $3}'`
+            if [ -n "$name" ];then break; fi
+         done
+         if [ -n "$name" ];then printf '%s' "$name"; else printf '%s' "$prof"; fi
+      fi
+   fi
+elif [ "$sav" == -report ];then
+   if [ -x "$base/axe.rpt/$bin_dir/amplxe-cl" ];then
+      axe_report="$base/axe.rpt/$bin_dir/amplxe-cl"
+   else
+      axe_report="$base/axe/$bin_dir/amplxe-cl"
+   fi
+   if [ -x "$axe_report" ];then
+      if [ -d "$prof/axe" ];then
+         axe_dir="$prof/axe"
+      elif [ `echo $prof/*.tb6` != "$prof/*.tb6" ];then
+         axe_dir=''
+      elif [ -d "$prof/sqlite-db" ];then
+         axe_dir="$prof"
+      else
+         axe_dir=''
+      fi
+   fi
+   if [ -n "$axe_dir" ];then
+      if [ -r "$base/etc/vectspots.tmpl" ];then rpt_sel="-r-f-t $base/etc/vectspots.tmpl"; else rpt_sel='-report vectspots'; fi
+      if [ ${TRACING_SDK_GET_PRF_PATH:-critical} == critical ];then rpt_rdc='';rpt_grp=''; fi
+      if [ ${TRACING_SDK_GET_PRF_PATH:-critical} == quantity ];then rpt_rdc='-report-knob no-reduction=1';rpt_grp=''; fi
+      if [ ${TRACING_SDK_GET_PRF_PATH:-critical} == parallel ];then rpt_rdc='-report-knob no-reduction=1';rpt_grp='tid'; fi
+   fi
+   if [ "$1" == loops ];then
+      if [ -n "$axe_dir" ];then
+         DBINTERFACE_SQLITE_VFS=unix-none ISM_SKIP_DWARF_SYMBOLS=1 "$axe_report" -r "$axe_dir" $rpt_sel${rpt_grp:+ -group-by=$rpt_grp} -inline-mode=off -loop-mode=loop-only -report-knob leaves-only=1 ${rpt_rdc:+$rpt_rdc }-show-as=samples -format=csv -csv-delimiter=tab
+      elif [ -s "$prof"/sde-mix-out.disasm ];then
+         if [ -x $base/python3 ];then python3=$base/python3; else python3=`which python3 2>/dev/null`; fi
+         if [ -n "$python3" ];then $python3 -OO $base/analyze "$prof"/sde-mix-out.disasm --wgt-lst "$prof"/procinfo.xml|sed '1,/List:/d;/^$/,$d'; fi
+      else
+         $base/iptu/bin/vtsaview "$prof" -g loop --xml -t 95
+      fi
+   elif [ "$1" == funcs ];then
+      if [ -n "$axe_dir" ];then
+         DBINTERFACE_SQLITE_VFS=unix-none ISM_SKIP_DWARF_SYMBOLS=1 "$axe_report" -r "$axe_dir" $rpt_sel -inline-mode=off -loop-mode=function-only ${rpt_rdc:+$rpt_rdc }-show-as=samples -format=csv -csv-delimiter=tab
+      elif [ -s "$prof"/sde-mix-out.txt ];then
+         $base/etc/mix2prf --wgt-lst <"$prof"/sde-mix-out.txt
+      else
+         $base/iptu/bin/vtsaview "$prof" -g f --xml -t 95
+      fi
+   elif [ "$1" == blocks ];then
+      if [ -n "$axe_dir" ];then
+         DBINTERFACE_SQLITE_VFS=unix-none ISM_SKIP_DWARF_SYMBOLS=1 "$axe_report" -r "$axe_dir" $rpt_sel -group-by=${rpt_grp:-basic-block} -inline-mode=off -loop-mode=function-only ${rpt_rdc:+$rpt_rdc }-show-as=samples -format=csv -csv-delimiter=tab
+         #DBINTERFACE_SQLITE_VFS=unix-none ISM_SKIP_DWARF_SYMBOLS=1 "$axe_report" -r "$axe_dir" -report hw-values -inline-mode=off -group-by basic-block,basic-block-size,function-mangled,module-path -show-as=samples -format=csv -csv-delimiter=tab
+      elif [ -s "$prof"/sde-mix-out.txt ];then
+         $base/coverage -d "$prof"/procinfo.xml <"$prof"/sde-mix-out.txt
+      else
+         $base/iptu/bin/vtsaview "$prof" -g b --xml -t 95
+      fi
+   elif [ "$1" == instrs ];then
+      if [ -n "$axe_dir" ];then
+         DBINTERFACE_SQLITE_VFS=unix-none ISM_SKIP_DWARF_SYMBOLS=1 "$axe_report" -r "$axe_dir" $rpt_sel -group-by=address -inline-mode=off -loop-mode=function-only ${rpt_rdc:+$rpt_rdc }-show-as=samples -format=csv -csv-delimiter=tab|sed 's/^\([^\t]\+\t[^\t]\+\t\)[0-9]*\t/\11\t/'
+         #DBINTERFACE_SQLITE_VFS=unix-none ISM_SKIP_DWARF_SYMBOLS=1 "$axe_report" -r "$axe_dir" -report hw-values -inline-mode=off -group-by module-path,address -show-as=samples -format=csv -csv-delimiter=tab
+      elif [ -s "$prof"/sde-mix-out.txt ];then
+         $base/coverage -i "$prof"/procinfo.xml <"$prof"/sde-mix-out.txt
+      else
+         echo;echo Error: The mode isn\'t supported for this kind of profiles;echo
+      fi
+   else
+      if [ -n "$axe_dir" ];then
+         DBINTERFACE_SQLITE_VFS=unix-none ISM_SKIP_DWARF_SYMBOLS=1 "$axe_report" -r "$axe_dir" $rpt_sel -inline-mode=off -loop-mode=loop-and-function -report-knob leaves-only=1 ${rpt_rdc:+$rpt_rdc }-show-as=samples -format=csv -csv-delimiter=tab
+      else
+         echo;echo Error: The mode isn\'t supported for this kind of profiles;echo
+         exit
+      fi
+   fi
+else
+   out_dir="$prof/.."
+   chk_wdg=false
+   if [ -x "$base/iptu/bin/vtsaview" ];then
+      iptu_report=true
+   else
+      iptu_report=false
+   fi
+   if [ -x "$base/axe.rpt/$bin_dir/amplxe-cl" ];then
+      axe_report="$base/axe.rpt/$bin_dir/amplxe-cl"
+   else
+      axe_report="$base/axe/$bin_dir/amplxe-cl"
+   fi
+   if [ "$sav" == -profile ];then
+      resolve=true
+      if [ -n "$1" ];then out_dir="$1";shift; fi
+   else
+      if [ -d "$prof" ];then
+         echo;echo Error: Profile $prof is already exists, please, delete or choose another directory.;echo
+         exit
+      fi
+
+      mkdir -p "$prof"
+      if [ ! -d "$prof" ];then
+         echo;echo Error: Can\'t create "$prof" directory, check permissions;echo
+         exit
+      fi
+
+      if [ "$1" == -mix    ];then try_ext=false;shift; else try_ext=true; fi
+      if [ "$1" == -skip   ];then skip=$2;shift 2; fi
+      if [ "$1" == -length ];then length=$2;shift 2; fi
+      if [ "$1" == -runtime-control ];then
+         paused=true
+         re='^[Rr][0-9]+(:[0-9]+)?$';if [ -n "$2" ] && [[ $2 =~ $re ]];then shift; fi
+         shift
+      elif [ -n "$skip" ];then
+         paused=true
+      else
+         paused=false
+      fi
+      if [ "$1" == -events-set ];then eset="$2";shift 2; else eset=simple; fi
+      if [ "$1" == -no-resolve ];then resolve=false;shift; else resolve=true; fi
+
+      cscl="${sav##*:}"
+      if [ "$cscl" != "$sav" ];then sav="${sav%:*}";else unset cscl;fi
+
+      if [ "$1" == -prime ];then
+         shift
+         for p in 100000:100003 500000:500009 1000000:1000003 5000000:5000011 10000000:10000019 50000000:50000017 100000000:100000007;do
+            if [ $sav == ${p%:*} ];then sav="${p#*:}";break; fi
+         done
+      fi
+
+      save_sav=$sav
+      if [ $sav -lt 100000 ];then
+         (( sav *= 1000 ));if [ $sav -lt 100000 ];then sav=100000; fi
+      fi
+
+      list=''
+
+      if [ $try_ext == true ];then
+         if [ -x "$base/sep/$bin_dir/sep" ];then
+            "$base/sep/$bin_dir/sep" -el >"$prof/events.txt"
+            ec_sav=sa;ec_del=', ';ec_pfx='';ec_bin=sep
+         elif [ -x "$base/sep/bin/sep" ];then #obsolete!!!
+            "$base/sep/bin/sep" -el >"$prof/events.txt"
+            ec_sav=sa;ec_del=', ';ec_pfx='';ec_bin=sep
+         fi
+         if [ ! -s "$prof/events.txt" ] && [ -x "$base/axe/$bin_dir/amplxe-runss" ] && [ `"$base/axe/$bin_dir/amplxe-runss" -context-value-list|grep isSEPDriverAvailable|awk '{print $NF}'|tr [:upper:] [:lower:]` == true ];then
+            "$base/axe/$bin_dir/amplxe-runss" -event-list >"$prof/events.txt" 2>/dev/null
+            [ -s "$prof/events.txt" ] || "$base/axe/$bin_dir/amplxe-cl" -collect-with runsa -knob event-config='?'|grep -v '^\s\|^$\|:\s*$'|awk '{print $1}' >"$prof/events.txt" 2>/dev/null
+            [ -s "$prof/events.txt" ] || "$base/axe/$bin_dir/sep" -el >"$prof/events.txt" 2>/dev/null
+            ec_sav=sa;ec_del=',';ec_pfx='';ec_bin=amplxe-cl
+         fi
+         if [ ! -s "$prof/events.txt" ] && [ -x "$base/iptu/bin/vtsarun" ];then
+            "$base/iptu/bin/vtsarun" -el >"$prof/events.txt"
+            ec_sav=sa;ec_del=' ';ec_pfx='-ec ';ec_bin=vtsarun
+         fi
+         if [ -s "$prof/events.txt" ];then
+            if [ `grep -m 1 -c MCDRAM "$prof/events.txt"` -gt 0 ];then
+               if   [ "$eset" == simple ];then
+                  eset_cfg=-allow-multiple-runs
+                  events=( CPU_CLK_UNHALTED.THREAD INST_RETIRED.ANY
+                           MEM_UOPS_RETIRED.L2_MISS_LOADS_PS
+                           BR_MISP_RETIRED.ALL_BRANCHES )
+               elif [ "$eset" == mcdram-bw ];then
+                  eset_cfg=-allow-multiple-runs
+                  events=( CPU_CLK_UNHALTED.THREAD INST_RETIRED.ANY UOPS_RETIRED.PACKED_SIMD
+                           UNC_E_RPQ_INSERTS- UNC_E_WPQ_INSERTS-
+                           UNC_H_TOR_OCCUPANCY.IRQ:filter1=0x3B- UNC_H_TOR_INSERTS.IRQ:filter1=0x3B- UNC_H_U_CLOCKTICKS- )
+               elif [ "$eset" == ddr-bw ];then
+                  eset_cfg=-allow-multiple-runs
+                  events=( CPU_CLK_UNHALTED.THREAD INST_RETIRED.ANY UOPS_RETIRED.PACKED_SIMD
+                           UNC_M_CAS_COUNT.RD- UNC_M_CAS_COUNT.WR-
+                           UNC_H_TOR_OCCUPANCY.IRQ:filter1=0x3B- UNC_H_TOR_INSERTS.IRQ:filter1=0x3B- UNC_H_U_CLOCKTICKS- )
+               fi
+            else
+               if   [ "$eset" == simple ];then
+                  eset_cfg=-allow-multiple-runs
+                  events=( CPU_CLK_UNHALTED.THREAD INST_RETIRED.ANY
+                        'MEM_LOAD_RETIRED.L3_MISS_PS|MEM_LOAD_UOPS_RETIRED.L3_MISS_PS|MEM_LOAD_UOPS_MISC_RETIRED.LLC_MISS_PS|MEM_LOAD_RETIRED.L3_MISS|MEM_LOAD_UOPS_RETIRED.L3_MISS|MEM_LOAD_RETIRED.LLC_MISS|MEM_LOAD_UOPS_RETIRED.LLC_MISS' \
+                        'DTLB_LOAD_MISSES.MISS_CAUSES_A_WALK|DTLB_MISSES.ANY' \
+                        'BR_MISP_RETIRED.ALL_BRANCHES_PS|BR_MISP_RETIRED.ALL_BRANCHES|BR_MISP_EXEC.ANY' )
+               elif [ "$eset" == ddr-bw ];then
+                  eset_cfg=-allow-multiple-runs
+                  events=( CPU_CLK_UNHALTED.THREAD INST_RETIRED.ANY FP_ARITH_INST_RETIRED.512B_PACKED_DOUBLE FP_ARITH_INST_RETIRED.512B_PACKED_SINGLE
+                           UNC_M_CAS_COUNT.RD- UNC_M_CAS_COUNT.WR-
+                           UNC_C_TOR_OCCUPANCY.ALL- UNC_C_TOR_INSERTS.ALL- UNC_C_CLOCKTICKS- )
+               elif [ "$eset" == loads ];then
+                  eset_cfg=-allow-multiple-runs
+                  events=( CPU_CLK_UNHALTED.THREAD INST_RETIRED.ANY
+                           MEM_LOAD_RETIRED.L2_MISS_PS MEM_LOAD_RETIRED.L3_MISS_PS
+                           MEM_LOAD_RETIRED.L3_HIT_PS MEM_INST_RETIRED.ALL_LOADS_PS )
+               elif [ "$eset" == cpi-only ];then
+                  eset_cfg=-allow-multiple-runs
+                  events=( 'INST_RETIRED.TOTAL_CYCLES_PS*|CPU_CLK_UNHALTED.THREAD' 'INST_RETIRED.PREC_DIST|INST_RETIRED.ANY' CPU_CLK_UNHALTED.REF_TSC )
+               elif [ "$eset" == freq ];then
+                  eset_cfg=-allow-multiple-runs
+                  events=( CPU_CLK_UNHALTED.THREAD CPU_CLK_UNHALTED.REF_TSC )
+               fi
+            fi
+            for es in "${events[@]}";do
+               for e in ${es//|/ };do
+                  if [ "${e: -1}" == - ];then e="${e%?}";unset lsav;else lsav=$sav;fi
+                  if [ "${e: -1}" == '*' ];then e="${e%?}";lsav=`echo "scale=0;$sav*(${cscl:-1})/1"|bc`;fi
+                  en=${e%:*};ep=${e##*:}
+                  if [ `grep -c "$en" -i "$prof/events.txt"` -gt 0 ];then
+                     list=${list:+$list$ec_del}"$ec_pfx$en"
+                     if [ "$en" != "$ep" ];then list="$list:$ep"; fi
+                     if [ -n "$lsav" ];then list="$list:$ec_sav=$lsav"; fi
+                     break
+                  fi
+               done
+            done
+         fi
+      fi
+      if [ -z "$list" ] || ( [ $chk_wdg == true ] && [ `cat /proc/sys/kernel/nmi_watchdog 2>/dev/null` == '1' ] );then
+         iptu_report=false
+         if [ -x "$base/axe/$bin_dir/amplxe-cl" ] && [ $try_ext == true ];then
+            if [ $chk_wdg == true ] && [ `cat /proc/sys/kernel/nmi_watchdog 2>/dev/null` == '1' ];then
+               echo
+               echo Warning: events based sampling is disabled since active watchdog has been detected.
+               echo '         'Please disable watchdog via: 'echo 0 > /proc/sys/kernel/nmi_watchdog'
+            else
+               echo
+               echo Warning: events based sampling isn\'t available, check drivers.
+            fi
+            echo '         'Switching to timer based sampling...
+            echo
+            ec_bin=amplxe-cl
+            ec_cmd="$base/axe/$bin_dir/$ec_bin -r $prof -collect hotspots${skip:+ -resume-after=$skip}${length:+ -d $length} -analyze-system${eset_cfg:+ $eset_cfg}"
+         else
+            if [ $try_ext == true ];then
+               echo
+               echo Warning: Can\'t find/use external profiler, install one or check drivers.
+               echo '         Switching  to  IMIX based  profiles (slow).  Please,  note that'
+               echo '         "sde_mpi --" should be inserted  somewhere  before apps binary.'
+               echo
+            fi
+            sav=$save_sav
+            if [ $sav -ge 100000 ];then
+               (( sav /= 1000 ));if [ $sav -gt 100000 ];then sav=100000; fi
+               echo;echo Warning: Number of blocks in IMIX report is too big, reducing to $sav;echo
+            fi
+            ec_bin=sde
+         fi
+      else
+         if [ $sav -ne $save_sav ];then
+            echo;echo Warning: SaV is too small, increasing to $sav;echo
+         fi
+         if [ $ec_bin == sep ];then
+            if [ -x "$base/sep/$bin_dir/sep" ];then
+               ec_cmd="$base/sep/$bin_dir/$ec_bin -start -ec $list -out $prof/ebs012345678.tb6"
+            else
+               ec_cmd="$base/sep/bin/$ec_bin -start -ec $list -out $prof/ebs012345678.tb6"
+            fi
+         elif [ $ec_bin == vtsarun ];then
+            ec_cmd="$base/iptu/bin/$ec_bin $prof${skip:+ -sd $skip}${length:+ -d $length} -s $list"
+         else
+            ec_cmd="$base/axe/$bin_dir/$ec_bin -r $prof -collect-with runsa${skip:+ -resume-after=$skip}${length:+ -d $length} -knob event-config=$list -analyze-system${eset_cfg:+ $eset_cfg}"
+            if [ $resolve == true ];then ec_cmd="$ec_cmd -finalization-mode=none";else ec_cmd="$ec_cmd -finalization-mode=deferred";fi
+            if [ $paused != true ] && [ `$base/axe/$bin_dir/amplxe-cl -help collect-with runsa|grep -c -m 1 enable-frames` -gt 0 ];then ec_cmd="$ec_cmd -knob enable-frames=false";fi
+            #ec_cmd="$base/axe/$bin_dir/$ec_bin -r $prof -collect-with runsa${skip:+ -resume-after=$skip}${length:+ -d $length} -knob event-config=$list -knob enable-trip-counts=true -no-auto-finalize"
+         fi
+      fi
+ 
+      app="$1";if [ ! -e "$app" ];then app=`which -- "$app" 2>/dev/null`; fi
+      if [ ! -e "$app" ];then
+         save_app="$1"
+         while [ $# -ne 0 ] && [ "$1" != '--' ];do
+            ec_cmd="${ec_cmd:+$ec_cmd }""$1";shift
+         done
+         if [ "$1" == '--' ];then
+            shift;app="$1";if [ ! -e "$app" ];then app=`which -- "$app" 2>/dev/null`; fi
+         fi
+         if [ ! -e "$app" ];then
+            echo;echo Error: File "$save_app" isn\'t found or not executable.;echo
+            exit
+         fi
+      fi
+      shift
+
+      if [ $ec_bin == sde ];then
+         if [ $try_ext == true ];then
+            source $base/find_loop
+         else
+            tgt=''
+         fi
+         TRACING_SDK_SDE_MPI_ARGS=${tgt:+$tgt }"-mix -odir $prof -top-blocks $sav"${TRACING_SDK_SDE_MPI_ARGS:+ $TRACING_SDK_SDE_MPI_ARGS} "$app" "$@"
+      elif [ $ec_bin == sep ];then
+         if [ $# -ne 0 ];then
+            $ec_cmd -app "$app" -args "$@"
+         else
+            $ec_cmd -app "$app"
+         fi
+      elif [ $ec_bin == amplxe-cl ];then
+         if [ $paused == true ];then ec_cmd="$ec_cmd -start-paused"; fi
+         DBINTERFACE_SQLITE_VFS=unix-none KMP_FORKJOIN_FRAMES=${KMP_FORKJOIN_FRAMES:-0} KMP_FORKJOIN_FRAMES_MODE=${KMP_FORKJOIN_FRAMES_MODE:-0} $ec_cmd -- "$app" "$@"
+      else
+         $ec_cmd -- "$app" "$@"
+      fi
+      
+      if [ $ec_bin == vtsarun ] || ( [ $ec_bin == sep ] && [ $iptu_report == true ] );then
+         $base/iptu/bin/vtsaview "$prof" --convert
+         if [ -x "$axe_report" ] && [ $iptu_report == false ];then
+            DBINTERFACE_SQLITE_VFS=unix-none ISM_SKIP_DWARF_SYMBOLS=1 "$axe_report" -r "$prof/axe" -import=`ls $prof/ebs*.tb?|head -n 1`
+         fi
+      elif [ $ec_bin != sde ];then
+         if [ ! -d "$prof"/sqlite-db ] && [ "$(echo "$prof"/data.*)" == "$prof/data.*" ];then
+            node=`uname -n`
+            if [ -d "$prof.$node"/sqlite-db ] || [ "$(echo "$prof.$node"/data.*)" != "$prof.$node/data.*" ];then
+               mv -f "$prof.$node"/* "$prof"
+               mv -f "$prof.$node"/.norun "$prof"
+               mv -f "$prof.$node"/.moduledb "$prof"
+               rmdir "$prof.$node"
+            elif [ "$(echo "$prof".[0-9]*/sqlite-db)" != "$prof.[0-9]*/sqlite-db" ] || [ "$(echo "$prof".[0-9]*/data.*)" != "$prof.[0-9]*/data.*" ];then
+               mv -f "$prof".[0-9]*/* "$prof"
+               mv -f "$prof".[0-9]*/.norun "$prof"
+               mv -f "$prof".[0-9]*/.moduledb "$prof"
+               rmdir "$prof".[0-9]*
+            fi
+         fi
+         if [ -x "$axe_report" ] && [ $iptu_report == false ];then
+            krn=`uname -r`;img=$base/etc/all/vmlinuz-$krn;sym=$base/etc/all/System.map-$krn
+            #if [ -r $img ] && [ -r $sym ];then
+            #   mkdir -p "$prof/all";cp $img $sym "$prof/all"
+            #else
+            #   echo;echo Warning: Kernel\'s image and symbols are not found.;echo
+            #fi
+            if [ $ec_bin == sep ];then
+               DBINTERFACE_SQLITE_VFS=unix-none ISM_SKIP_DWARF_SYMBOLS=1 "$axe_report" -r "$prof"/axe -import=`ls $prof/ebs*.tb?|head -n 1`
+            else
+               if [ $resolve == true ];then DBINTERFACE_SQLITE_VFS=unix-none ISM_SKIP_DWARF_SYMBOLS=1 "$axe_report" -r "$prof" -finalize -finalization-mode=full;fi
+            fi
+         fi
+      fi
+   fi
+   if [ $resolve == true ];then
+      if [ -d "$prof"/sqlite-db ] || [ -d "$prof"/axe ] || [ `echo "$prof"/data.*` != "$prof/data.*" ];then
+         if [ $iptu_report == true ];then
+            if [ `echo "$prof"/*.tb6` != "$prof/*.tb6" ];then
+               cp "$prof"/data.*/*.tb6 "$prof"
+               $base/iptu/bin/vtsaview "$prof" --convert
+            fi
+         else
+            if [ -d "$prof/axe" ];then axe_dir="$prof/axe"; else axe_dir="$prof"; fi
+            if [ -r "$base/etc/vectspots.tmpl" ];then rpt_sel="-r-f-t $base/etc/vectspots.tmpl"; else rpt_sel="-report vectspots"; fi
+            DBINTERFACE_SQLITE_VFS=unix-none ISM_SKIP_DWARF_SYMBOLS=1 "$axe_report" -r "$axe_dir" $rpt_sel -group-by=function -inline-mode=off -loop-mode=function-only -report-knob no-reduction=1 -show-as=percent -format=csv -csv-delimiter=tab|awk -F '\t' '{printf "%s,\"%s\"",$2,$1;for(i=3;i<=NF;i++){printf ",%s",$i;}print"";}'  >"$out_dir"/profile.csv
+            echo >>"$out_dir"/profile.csv
+            DBINTERFACE_SQLITE_VFS=unix-none ISM_SKIP_DWARF_SYMBOLS=1 "$axe_report" -r "$axe_dir" $rpt_sel -group-by=function -inline-mode=off -loop-mode=function-only -report-knob no-reduction=1 -show-as=values  -format=csv -csv-delimiter=tab|awk -F '\t' '{printf "%s,\"%s\"",$2,$1;for(i=3;i<=NF;i++){printf ",%s",$i;}print"";}' >>"$out_dir"/profile.csv
+            DBINTERFACE_SQLITE_VFS=unix-none ISM_SKIP_DWARF_SYMBOLS=1 "$axe_report" -r "$axe_dir" $rpt_sel -group-by=function -inline-mode=off -loop-mode=function-only -show-as=percent -format=csv -csv-delimiter=tab|awk -F '\t' '{printf "%s,\"%s\"",$2,$1;for(i=3;i<=NF;i++){printf ",%s",$i;}print"";}'  >"$out_dir"/hotpath.csv
+            echo >>"$out_dir"/hotpath.csv
+            DBINTERFACE_SQLITE_VFS=unix-none ISM_SKIP_DWARF_SYMBOLS=1 "$axe_report" -r "$axe_dir" $rpt_sel -group-by=function -inline-mode=off -loop-mode=function-only -show-as=values  -format=csv -csv-delimiter=tab|awk -F '\t' '{printf "%s,\"%s\"",$2,$1;for(i=3;i<=NF;i++){printf ",%s",$i;}print"";}' >>"$out_dir"/hotpath.csv
+         fi
+      fi
+      if [ `echo $prof/*.tb6` != "$prof/*.tb6" ];then
+         if [ $iptu_report == true ];then
+            $base/iptu/bin/vtsaview "$prof" -g f -a e --sea p --er --csv --csv-delimiter=semicolon|awk -F ';' '{printf "%s,\"",$2;system("'"$base/get_prf '"'"$1"'"' -normalize '"'"$(NF-1)"'"'"'");printf "\"";for(i=3;i<=NF;i++){printf ",%s",$i}print"";}'  >"$out_dir"/profile.csv
+            echo >>"$out_dir"/profile.csv
+            $base/iptu/bin/vtsaview "$prof" -g f -a e --sea e --er --csv --csv-delimiter=semicolon|awk -F ';' '{printf "%s,\"",$2;system("'"$base/get_prf '"'"$1"'"' -normalize '"'"$(NF-1)"'"'"'");printf "\"";for(i=3;i<=NF;i++){printf ",%s",$i}print"";}' >>"$out_dir"/profile.csv
+         fi
+      elif [ -s "$prof"/sde-mix-out.txt ];then
+         $base/etc/mix2prf <"$prof"/sde-mix-out.txt >"$out_dir"/profile.csv
+         $base/etc/mix2prf --prc-xml <"$prof"/sde-mix-out.txt >"$prof"/procinfo.xml
+         $base/reconstruct <"$prof"/sde-mix-out.txt >"$prof"/sde-mix-out.disasm
+         if [ -x $base/python3 ];then python3=$base/python3; else python3=`which python3 2>/dev/null`; fi
+         if [ -n "$python3" ];then $python3 -OO $base/analyze "$prof"/sde-mix-out.disasm -loops all "$prof"/procinfo.xml >"$prof"/sde-mix-out.s; fi
+      fi
+      $base/get_prf "$prof" -report blocks|$base/find_hotspots -d ${TRACING_SDK_GET_PRF_EFLT:-1}${TRACING_SDK_GET_PRF_MADR:+ -b $TRACING_SDK_GET_PRF_MADR} >"$out_dir"/distrib.txt
+   fi
+fi

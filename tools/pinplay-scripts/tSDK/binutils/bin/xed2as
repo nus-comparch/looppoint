@@ -1,0 +1,72 @@
+#!/usr/bin/perl -w
+# Bug reports and comments to Igor.Ermolaev@intel.com
+use strict;
+no warnings "portable";
+use File::Spec;
+
+use constant { FALSE=>0, TRUE=>-1 };
+
+my %cmps = ( '2'=>'gt' );
+my $cmp_ids = join '|', keys %cmps;
+
+my $section   = undef;
+my $sym       = undef;
+my $seen_addr = FALSE;
+
+while(<STDIN>)
+{
+   if( /^\s*XDIS\s+([[:xdigit:]]+)\s*\:\s*\S+\s+\S+\s+[[:xdigit:]]+\s*([^#]+)(\#\s*(.+)$)?/io )
+   {
+      my $addr = $1;my $instr = $2;my $line = $4;
+      $addr  =~ s/^0+([[:xdigit:]]+)/$1/o;
+      $instr =~ s/\s*$//o;
+      # formating
+      $instr =~ s/^(j\w+|call\w*)(\s+)0x(0*)([[:xdigit:]]+)/$1$2$4/io;
+      $instr =~ s/^(call|jmp)(\s)/$1q$2/io;
+      $instr =~ s/,\s+/,/go;
+      $instr =~ s/^([^k]\w+\s.+),(\%k\d+)(.+)$/$1$3\{$2\}/io;
+      $instr =~ s/\{\%k0\}$//io;
+      $instr =~ s/^(.+)(\{z\})(.*)$/$1$3$2/io;
+      $instr =~ s/^(\w+)(p[ds])[xyz](\s)/$1$2$3/io;
+      $instr =~ s/^(\w+)(maskmovd|movdqu)y(\s)/$1$2$3/io;
+      $instr =~ s/^(vpbroadcastd|mov[hl]pd)[ql](\s)/$1$2/io;
+      $instr =~ s/^(movs)(xd|xdl)(\s)/$1lq$3/io;
+      $instr =~ s/^(\w*)(max|min|mov|add|mul|div|sub|comi|f(n)?madd[123]+)sdq(\s)/$1$2sd$4/io;
+      $instr =~ s/^(\w+)(\s+)(.+)\{(rn)e-(sae)\}$/$1$2\{$4\}\{$5\},$3/io;
+      $instr =~ s/^(sar|sal|shl|shr)(\s+)\$0x1,/$1$2/io;
+      $instr =~ s/^jnb/jae/io;
+      $instr =~ s/^jz/je/io;
+      $instr =~ s/^jnz/jne/io;
+      $instr =~ s/^jnl/jge/io;
+      $instr =~ s/^jgee/jg/io;
+      $instr =~ s/^cmovnle/cmovg/io;
+      $instr =~ s/^cmovnl/cmovge/io;
+      $instr =~ s/^(cmp|mov|sub|add|push|pop)[ql](\s+)([^\$\s])/$1$2$3/io;
+      $instr =~ s/^(nop[wl]\s+)\%(e)?ax,\(\%rax,\%rax,1\)/${1}0x0(%rax,%rax,1)/io;
+      $instr =~ s/^(nopl\s+)\%eax,\(\%rax\)/${1}0x0(%rax)/io;
+      $instr =~ s/^(vpcmp)([d])(\s+)\$0x($cmp_ids),/$1$cmps{$4}$2$3/io;
+      #$instr =~ s/^(nopl\s+)0x0\(\%rax\)/${1}(%rax)/io;
+      #$instr =~ s/^(vgatherdpd|lea)(\s+)\(/$1${2}0x0(/io;
+ 
+      print "Disassembly of section $section:\n\n" if $seen_addr == FALSE;
+      if( defined $sym )
+      {
+         printf "%016s <%s>:\n%s():\n", $addr, $sym, $sym;
+         $sym = undef;
+      }
+      print "$line\n" if defined $line;
+      printf "%8s:\t%s\n", $addr, $instr;
+
+      $seen_addr = TRUE;
+   }
+   elsif( /^\s*#\s*SECTION\s*\d+\s*(\S+)/io )
+   {
+      $section=$1;
+   }
+   elsif( /^\s*SYM\s+(.+)\:/io )
+   {
+      $sym=$1;
+   }
+}
+
+exit 0;

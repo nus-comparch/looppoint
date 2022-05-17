@@ -1,0 +1,594 @@
+January 21, 2016  T. Mack Stallcup
+
+* Added DrDebug '--gdb_options' which lists options to be added to the
+  GDB command line.
+
+----------------------------------------------------------------------------------
+This is the version of the Python scripts as of 1/21/2016.  The base
+functionality generates representative region pinballs, using either PinPlay or
+SDE kits, and calculates the functional correlation for each process. This is a
+measure of how representative the regions are of the original application. 
+
+The PinPlay scripts are implemented by the scripts without the prefix 'sde_' or
+'brpred_'.  These are the default phases run for PinPlay:
+    logging
+    basic block vector generation
+    simpoint
+    region pinball generation
+
+The PinPlay scripts have the additional capability to use the new Branch
+Predictor simulator to generate the functional correlation.  These scripts have
+the string 'brpred_' prepended to the file names.  This simulator does not work
+with multi-threaded apps yet.  
+
+The BP scripts have these additional default phases:
+  run BP on WP pinballs
+  run BP on region pinballs
+  calculate functional correlation
+
+The SDE version is a superset of the basic PinPlay scripts.  To run with SDE, add the
+'sde_' scripts to the PinPlay scripts.
+
+The SDE scripts have these additional default phases:
+  generate traceinfo files
+  generate LMAT/LIT files 
+  run CMPSim on WP pinballs
+  run CMPSim on region pinballs
+  calculate functional correlation
+  verify with x86noas
+
+In order to use these scripts, the kits must be installed in the default locations,
+or a parameter is needed to indicate where the kits are located.
+    Default location for PinPlay: $HOME/pinplay
+    Default location for SDE      $HOME/SDE
+In addition, the scripts will look in the current directory for a directory
+with the default name.
+
+The location of non-default kits can be specified with one of these options:  
+    --pinplayhome 
+    --sdehome
+
+Other default values in the scripts include these values:
+    maxk = 20
+    slice_size = 30,000,000
+    warmup_length = 500,000,000
+    cutoff = 1.0
+
+There are 3 levels of scripts:
+   low level 'primative' scripts
+   wrapper or driver scripts which use the primatives
+   high level scripts which use driver script
+
+The low level primatives are:  logger.py and replayer.py.   
+An example of a wrapper scripts is: replay_dir.py.
+'pinpoints.py' is the high level script which is used to generate
+traces. (sde_pinpoints.py for SDE)
+
+The scripts require four parameters to be defined in order to log an
+application to generate whole program pinballs.  These parameters define the
+application to trace and how to trace it. These parameters are:
+
+  program_name - A string with no white spaces which is the name of the
+      		 application being traced.
+
+  input_name - A string with no white spaces which is the name of the input
+               deck, or workload, being traced.
+
+  command - The command used to execute the binary to be traced. This must be
+	    the lowest level binary, not a script which calls another script or
+	    binary.  This can include white space.
+
+  mode - The type of application being traced. There are 4 possible values:
+	    st - single-threaded
+	    mt - multi-threaded
+	    mpi - MPI single-threaded
+	    mpi_mt - MPI multi-threaded
+
+For any of the other phases, besides logging, only the parameters 'program_name'
+and 'input_name' are required.
+
+The simplest way to generate traces is to create a configuration file which
+contains these parameters.  This file may also contains other common
+paramemters as well.  The script will try to read a default configuration file
+with the name 'tracing.cfg'.  It is also possible to include configuration
+files on the command line using the option '--cfg'.
+
+Here's a very simple configuration file:
+
+[Parameters]
+program_name:   omnetpp
+input_name:     p10000-s10
+command:        ./dtlb5-lin64 -p10000 -s10
+mode:           st
+
+The line "[Parameters]" is required to define the section. Each parameter and
+it's value should be on one line, separate by a ':'.  Comments start with the char '#'.
+
+It is also possible to include any of the parameters listed in the following sections
+of the script help msg.  (See below for an example of the help output.)
+    General parameter options
+    Simpoint parameter options
+    Region pinball generation parameter options
+
+This can include parameters such as:
+
+   slice_size, maxk, warmup_length
+
+It is also possible to give any parameter with a command line option.  The
+required parameters must be defined either in a configuration file, or via
+command line options.  If they are not defined, the script will exit with an
+error.
+
+You must give the 'pinpoints.py' script at least one option which determines
+the script behavior.  If you want to run all the default phases to generate
+pinballs for the representative regions, use the option '--default_phases'.
+For example:
+
+    ./pinpoints.py --default_phases >& output.txt
+
+It is also possible to just use one, or more phases, without having to run all
+the default phases.  To do this, just use the desired option(s).  Multiple
+options can be given on the command line.  Single char options can be combined
+into one option (.i.e: -lbsp).  The list of options is given in the "Phase
+options" setion given in the help message (see below).  
+
+For example, here's how to generate whole program pinballs and replay them,
+
+    ./pinpoints.py --log --replay >& output.txt
+
+-----------------------------------------------------------------------------
+
+Usage: sde_pinpoints.py phase [options] 
+Version: $Revision:1.100$
+
+The script generates traces for an application using the PinPoints methodology
+(based on PinPlay: Pin-based record/replay tools). At least one command line
+option must be given to chose the phases to run. Use option '--default_phases'
+to run all the default phases. See section "Phase options" for a list of
+phases. 
+
+The two parameters 'program_name' and 'input_name' must be defined in order to
+run this script.  If running the logging phase (-l), then two more parameters,
+'command' and 'mode', must also be defined.  Parameters can be given either in
+a tracing configuration file or with command line options.  
+
+The default configuration file is "tracing.cfg". If it exists, the script will
+always read this cfg file first. Use the option "--cfg" to select additional
+files. Each cfg file on the command line is processed in order.  Command line
+options over-ride values read from configuration files. All parameters listed
+in the three parameter sections below can be defined in a cfg file.  The long
+option name, not the single letter option, must be used in the cfg
+files.
+
+Example parameter configuration file:
+--------------------------------------------
+[Parameters]
+program_name:   omnetpp
+input_name:     p10000-s10
+command:        ./dtlb5-lin64 -p10000 -s10
+mode:           st
+--------------------------------------------
+
+Options:
+  --version             show program's version number and exit
+  -h, --help            show this help message and exit
+  --add_program_wp      Add parameter 'program_name' to the directory name
+                        used for the whole program pinballs.
+  --append_status       Append status information to the existing status file
+                        for this run instead of overwriting it.  Default is to
+                        overwrite file.
+  --cfg FILE, --config_file FILE
+                        Give one, or more, file(s) containing the application
+                        tracing parameters. Must use '--cfg' for each file.
+  -d, --debug           Print out the command(s), but do not execute.  Also
+                        prints out diagnostic information as well.
+  --delete              CAUTION! This option will delete all the files and
+                        directories generated with the current tracing
+                        parameters.  The only exception is if the user has
+                        specified a whole program pinball directory with the
+                        option '--whole_pgm_dir', then it will NOT be deleted.
+  --delete_all          CAUTION! Delete ALL files and directories generated
+                        for ALL tracing instances.
+  --delete_wp           CAUTION! This option will delete all the files and
+                        directories generated with the current tracing
+                        parameters, including the whole program pinball
+                        directory given by the option '--whole_pgm_dir'.
+  --dir_separator=DIR_SEPARATOR
+                        Use the char DIR_SEPARATOR as the separator between
+                        program_name and input_name in the Data/pp directory
+                        names.  Default char: '.'
+  --log_options=LOG_OPTIONS
+                        Pass knobs (options) to the logger pintool.
+  --msgfile_ext=MSGFILE_EXT
+                        Use MSGFILE_EXT as the string used to describe the
+                        message file generated by the PinPlay tools.  This
+                        REPLACES the default description generated by the
+                        PinTool. For example, when replaying a pinball, and
+                        using this option with the string '.test', the msg
+                        file will end with the string '.test.txt' instead of
+                        'replay.txt'.  NOTE: Use with caution as this same
+                        string will be used for the msg files in ALL phases
+                        which are executed.
+  --no_glob             Do not expand the directory name to include all
+                        directories which start with the string.  Just use the
+                        directory name 'as is'.
+  --pintool=PINTOOL     Override the default pintool for this kit with
+                        PINTOOL.
+  --pin_options=PIN_OPTIONS
+                        Pass knobs (options) to pin (not the pintool).
+  --replay_options=REPLAY_OPTIONS
+                        Pass raw options to the replayer pintool.
+  --save_global         To help debugging, save the global data files instead
+                        of deleting them.
+  --verbose             Print out command line used and other information.
+  --lit_options=LIT_OPTIONS
+                        Pass raw options to pinLIT pintool.
+
+  Phase options:
+    These options select the tracing phases to execute. Either one, or
+    more, phase option must be given or the option '--default_phases'
+    which runs all default phases. Must define parameters 'program_name'
+    and 'input_name' for every phase.  The logging phase '-log' also
+    requires 'command' and 'mode'.  Phases are executed in the order given
+    below:
+
+    --default_phases    Always run these default phases: log,
+                        basic_block_vector, simpoint, and region_pinball.
+                        When using some simulators one, or more, of these
+                        additional phases may also be run by default:
+                        whole_sim, region_sim, pred_error.  Additional phases
+                        are also run by default with SDE.
+    --native_pure       Run the application on the HW, without Pin or Pintools
+                        (no logging).
+    -l, --log           Generate whole program pinballs for the application.
+                        Required parameters: program_name, input_name,
+                        command, mode
+    -r, --replay        Replay all whole program pinballs.
+    -b, --basic_block_vector
+                        Generate basic block vectors (BBV) for whole program
+                        pinballs.
+    -s, --simpoint      Run Simpoint using whole program pinball basic block
+                        vectors (BBV).
+    -p, --region_pinball
+                        Relog whole program pinballs using representative
+                        regions from Simpoint to generate region pinballs.
+    -R, --replay_region
+                        Replay all region pinballs.
+    -L, --lit_gen       Generate LIT and LMAT files.
+    -t, --traceinfo     Generate traceinfo XML files.
+    -T, --region_sim    Run the simulator on the region pinballs.
+    -W, --whole_sim     Run the simulator on the whole program pinballs.
+    -c, --pred_error, --calc_func
+                        Calculate the prediction error, using the metric of
+                        interest, for a set of representative regions.  Must
+                        have already generated simulator data, either using
+                        phases '--whole_sim' and '--region_sim' or the
+                        appropriate options for your simulator,  before
+                        running this phase.  ('--calc_func' is included for
+                        backward compatability.)
+    -v, --verify, --only_verify
+                        Verify the LIT files are valid by running them thru a
+                        simulator (does not verify LMAT files).
+    --imix_lit          Generate the instruction mix for the LIT files.
+    --imix_region       Generate the instruction mix for the region pinballs.
+                        Includes instructions for: prolog, warmup, region and
+                        epilog.
+    --imix_whole        Generate the instruction mix for the whole program
+                        pinballs.
+
+  General parameter options:
+    These options allow the user to define tracing parameters. They can
+    also be given in the tracing configuration file(s). Command line
+    options over-ride parameters defined in the configuration file(s).
+    IMPORTANT NOTE: When using SDE (not PinPlay), the two parameters
+    'program_name' and 'input_name' can NOT have either the char '.' or
+    '_' in them.
+
+    --command=COMMAND   COMMAND is the command line used to run the
+                        application being traced (binary and all required
+                        options). Must use " to bracket the command if it
+                        contains more than one string. For example: "ls -l".
+                        No default. Must be defined in either a tracing
+                        configuration file or this option.
+    --compressed=COMP   COMP specifies which compression mode to be used
+                        (none, bzip2, gzip).  Default: bzip2
+    -f FOCUS_THREAD, --focus_thread=FOCUS_THREAD
+                        Thread to use when running Simpoint & generating
+                        region pinballs for multi-thread apps. Default: 0.
+    --input_name=INPUT_NAME
+                        Name of the input file or workload. No default. Must
+                        be defined in either the tracing configuration file or
+                        this option.  NOTE: This paramater can NOT have either
+                        the char '.' or '_' in it.
+    --mpi_options=MPI_OPTIONS
+                        Defines the MPI environment variables used to run the
+                        application.  Default values for these variables are:
+                        -n num_proc
+                        -env I_MPI_DEVICE shm
+                        -env I_MPI_SPIN_COUNT 2147483647
+                        -env I_MPI_PIN_MODE lib
+                        -env I_MPI_PIN_PROCS
+                        3,2,1,0,7,6,5,4,11,10,9,8,15,14,13,12
+                        -env I_MPI_DEBUG 4
+    --mode=MODE         MODE specifies the type of program to be logged. No
+                        default. Must be defined in either a tracing
+                        configuration file or this option.
+                        st - single-threaded
+                        mt - multi-threaded
+                        mpi - MPI single-threaded
+                        mpi_mt - MPI multi-threaded
+                        mp - multi-process, single-threaded
+                        mp_mt - multi-process, multi-threaded
+    --num_cores=NUM_CORES
+                        Number of cores to use for running phases
+                        concurrently.  Default is the number of cores on the
+                        system.  Set to 1 to run serially.
+    -n NUM_PROC, --num_proc=NUM_PROC
+                        Number of processes. Default: 1
+    --program_name=PROGRAM_NAME
+                        Name of the application to trace. No default. Must be
+                        defined in either the tracing configuration file or
+                        this option. NOTE: This paramater can NOT have either
+                        the char '.' or '_' in it.
+    --sdehome=SDEHOME   Set the directory where the SDE kit is located.
+                        Default: $HOME/SDE
+
+  Simpoint parameter options:
+    These options define parameters which are used in the Simpoint phase
+    (--simpoint).
+
+    --combine=COMBINE   When combining the vectors for BBV and LDV files into
+                        a single frequency vector file, use scaling factor
+                        COMBINE (0.0 >= COMBINE <= 1.0).  The BBV is scaled by
+                        COMBINE, while the LDV is scaled by 1-COMBINE.
+                        Default scaling factor if this option is not used: 0.5
+    --cutoff=CUTOFF     Value which defines the fraction of the representative
+                        regions to use when generating region pinballs.
+                        (0.0 > CUTOFF <= 1.0)  Default: 1.0
+    --ldv               Generate LRU Stack Distance vectors (LDV), as well as
+                        Basic Block Vectors (BBV), for the whole program
+                        pinballs.  Then use both BBVs and LDVs as input to
+                        Simpoint. NOTE: In order to use both BBV/LDV for
+                        Simpoint,  this option must be given for both the
+                        phase which generate BBVs (--basic_block_vector) and
+                        the one which runs Simpoint (--simpoint).  See
+                        --combine for more info on how to define the method
+                        used to combine the two vector.  Default scaling
+                        factor if the option --combine is not used: 0.5
+    --maxk=MAXK         Set the value MAXK for Simpoint. This is the maximum
+                        number of traces which may be generated.  Fewer traces
+                        will be generated in many cases. Default: 20
+    -S SLICE_SIZE, --slice_size=SLICE_SIZE
+                        Number of instructions in each slice (representative
+                        region). Default: 30,000,000
+    --simpoint_options=SIMPOINT_OPTIONS
+                        Options passed to the Simpoint binary. NOTE: Replaces
+                        all knobs normally given on the Simpoint command line.
+                        Must explicitly define all knobs required for the
+                        desired behavior when running Simpoints with this
+                        option.
+
+  Region pinball generation parameter options:
+    These options define parameters which are used in the region pinball
+    generation phase (--region_pinball).
+
+    --epilog_length=EPILOG_LENGTH
+                        Number of extra instruction to be included after
+                        region. Default: 0
+    --prolog_length=PROLOG_LENGTH
+                        Number of extra instruction to be included before the
+                        region. Default: 0
+    -w WARMUP_LENGTH, --warmup_length=WARMUP_LENGTH
+                        Number of extra instruction to be included before
+                        prolog. Default: 500,000,000
+
+  LIT file verification parameter options:
+    These options define parameters which are used in the phase to verify
+    LIT files (--verify).
+
+    --archsim_config_dir=ARCHSIM_CONFIG_DIR
+                        Directory with archsim configuration files.  Default:
+                        $HOME/sims/latest_archsim/skl-archsim-def-
+                        files/ww47-2011
+    --simhome=SIMHOME   Set the directory where the simulator is located.
+                        Default: $HOME/sims/latest_keiko
+    --sim_options=SIM_OPTIONS
+                        Options passed to the simulator.
+    --processor=PROCESSOR
+                        Target processor (or simulator configuration file) for
+                        the binary being traced/simulated.
+
+  Phase modification options:
+    These options modify the behavior of one, or more, phase(s).
+
+    --coop_pinball      Relog the region pinballs as cooperative, not per
+                        thread, the default.
+    --cross_os          Use when a log file (pinball) is collected on one OS,
+                        and processed on a different OS (e.g. Windows/Linux or
+                        Android/Linux).  This may cause some address ranges to
+                        be relocated and the translation of addresses
+                        referencing them.
+    --list              Print the list of commands this script would execute.
+                        Does NOT run these commands.
+    --native_pin        Run the application using Pin, but with no logging.
+                        Used for native runs of binaries which require SDE to
+                        emulate instructions.
+    --no_focus_thread   Generate region pinballs without a focus thread.
+    --whole_pgm_dir=WHOLE_PGM_DIR
+                        Use WHOLE_PGM_DIR as the directory for the whole
+                        program pinballs. This option is 'sticky'. That means,
+                        once the option is used to define the whole program
+                        directory, this dir name will always be used any time
+                        the tracing script is invoked with the current
+                        'tracing instance'.  (Tracing instance as defined by:
+                        program_name and input_name)  The default dir name
+                        when this option is NOT used is:
+                        whole_program.input_name.
+    --coop_lit          Generate cooperative LIT files, not per thread, the
+                        default.
+    --spec              Do not check for special chars '_' and '.' when using
+                        SDE.  Useful for the SPEC benchmarks.  Default: (SDE
+                        only) check for special char and exit if they are
+                        found.
+
+  Whole program pinball filtering phases and options (relogging):
+    These options define phases which are used to 'filter' the whole
+    program pinballs during relogging. When multiple filters are selected,
+    they are applied in the order the options are listed below. There are
+    two types of options listed here: 'relog_*' and 'use_relog_*'. 
+
+    The first type of option (relog_*) define phases which modify WP
+    pinballs by relogging with a set of knobs which 'filter out' various
+    type of instructions.  For example, filter on a focus thread or remove
+    initialization instructions using SSC marks.  The relog_* options are
+    'sticky' options.  That means, once they are used on a command line,
+    the tracing environment will remember these options.  The next time
+    you run the script, it will use the filtered whole program pinballs
+    generated using the relog_* options. 
+
+    The 2nd type of option (use_relog_*) are used to select a set of
+    filtered WP pinballs for the current invocation of the script.  The
+    use_relog_* options on the current command line are used to select the
+    set of filtered pinballs for this run instead of using the default set
+    of filtered WP pinballs. This allows the user to over-ride a set of
+    'sticky' relog_* options.  Once you apply a set of use_relog_*
+    options, these filters are used as the new 'sticky' filtering options.
+
+    --relog_name=RELOG_NAME
+                        Relog the whole program pinballs.  The user must
+                        define the knobs used to control the relogging step
+                        with the option '--log_options'. The relogged WP
+                        pinballs will be in a directory which uses the
+                        original WP directory name with the string
+                        '[.relog].RELOG_NAME' added to the name.
+    --relog_focus       Relog the whole program pinballs using the current
+                        focus thread. The relogged WP pinballs will be in a
+                        directory which uses the original WP directory name
+                        with the string '[.relog].per_thread_X' added to the
+                        name. (Where X is the focus thread.)
+    --relog_no_init     Relog the whole program pinballs and remove the
+                        initialization instructions (before iterative
+                        application code) between the appropriate SSC marks.
+                        The relogged WP pinballs will be in a directory which
+                        uses the original WP directory name with the string
+                        '[.relog].no_init' added to the name.
+    --relog_no_cleanup  Relog the whole program pinballs and remove the
+                        cleanup instructions (after iterative application
+                        code) between the appropriate SSC marks.  The relogged
+                        WP pinballs will be in a directory which uses the
+                        original WP directory name with the string
+                        '[.relog].no_cleanup' added to the name.
+    --relog_code_exclude=RELOG_CODE_EXCLUDE
+                        Relog the whole program pinballs excluding (filtering
+                        out) all instructions between two addresses.
+                        RELOG_CODE_EXCLUDE is a file which defines the
+                        instructions to be excluded. Each line in the file
+                        contains two addresses. The first address is the
+                        initial instruction to be excluded. The second is the
+                        address of the first instruction which will be
+                        included in the log file. (I.E. instructions are
+                        skipped between the 1st address and the instruction
+                        BEFORE the 2nd address.) Multiple sets of address are
+                        allowed, one set per line. The relogged WP pinballs
+                        will be in a directory which uses the original WP
+                        directory name with the string '[.relog].code_ex-
+                        RELOG_CODE_EXCLUDE' added to the name.
+    --relog_no_omp_spin
+                        Relog the whole program pinballs and remove the OpenMP
+                        spin instructions. (Must use an Intel OpenMP library
+                        with SSC marks.)  The relogged WP pinballs will be in
+                        a directory which uses the original WP directory name
+                        with the string '[.relog].no_omp_spin' added to the
+                        name.
+    --relog_no_mpi_spin
+                        Relog the whole program pinballs and remove the MPI
+                        spin instructions. (Must use an Intel MPI library with
+                        SSC marks.)  The relogged WP pinballs will be in a
+                        directory which uses the original WP directory name
+                        with the string '[.relog].no_mpi_spin' added to the
+                        name.
+    --use_relog_name=USE_RELOG_NAME
+                        Use whole program pinballs relogged with a user
+                        defined name for subsequent phases.  The string
+                        USE_RELOG_NAME is the extension of the whole program
+                        pinball directory defined by the user.
+    --use_relog_focus   Use whole program pinballs relogged with a focus
+                        thread for subsequent phases.
+    --use_relog_no_cleanup
+                        Use whole program pinballs which have been relogged to
+                        remove cleanup instructions.
+    --use_relog_no_init
+                        Use whole program pinballs which have been relogged to
+                        remove initialization instructions.
+    --use_relog_code_exclude=USE_RELOG_CODE_EXCLUDE
+                        Use whole program pinballs relogged with code
+                        exclusion for subsequent phases. The string
+                        USE_RELOG_CODE_EXCLUDE is the extension of the whole
+                        program pinball directory defined by the user.
+    --use_relog_no_omp_spin
+                        Use whole program pinballs which have been relogged to
+                        remove OpenMP spin instructions.
+    --use_relog_no_mpi_spin
+                        Use whole program pinballs which have been relogged to
+                        remove MPI spin instructions.
+
+
+Python module versions:
+brpred_kit.py             1.29
+brpred_metric.py          1.28
+brpred_pinpoints.py       1.23
+brpred_replay_dir.py      1.12
+brpred_replayer.py        1.14
+cbsp.py                   1.11
+cbsp_phases.py            1.15
+cmd_options.py            1.100
+config.py                 1.121
+correct_size_matrix.py    1.8
+drd_util.py               1.16
+drd_util.py               1.14
+find_code_exclude.py      1.5
+gdb_record.py             1.8
+gdb_replay.py             1.8
+keiko_kit.py              1.4
+keiko_run.py              1.7
+keiko_run_dir.py          1.4
+kit.py                    1.57
+log.py                    1.14
+logger.py                 1.84
+msg.py                    1.38
+pb_weight.py              1.5
+phases.py                 1.128
+pinpoints.py              1.100
+proj.py                   1.5
+record.py                 1.29
+regions.py                1.30
+relog.py                  1.10
+rename.py                 1.22
+replay.py                 1.15
+replay_dir.py             1.78
+replayer.py               1.67
+sde_cbsp.py               1.11
+sde_cmpsim_kit.py         1.48
+sde_cmpsim_metric.py      1.14
+sde_cmpsim_replay_dir.py  1.17
+sde_cmpsim_replayer.py    1.20
+sde_config.py             1.4
+sde_kit.py                1.47
+sde_log.py                1.2
+sde_logger.py             1.27
+sde_phases.py             1.65
+sde_pinpoints.py          1.53
+sde_replay_dir.py         1.21
+sde_replayer.py           1.27
+sim_kit.py                1.10
+sim_run.py                1.16
+sim_run_dir.py            1.13
+simpoint.py               1.33
+sniper_pinpoints.py       1.38
+traceinfo.py              1.7
+util.py                   1.132
+verify.py                 1.6
+x86_kit.py                1.10
+x86_run.py                1.10
+x86_run_dir.py            1.12
+

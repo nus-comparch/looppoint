@@ -1,0 +1,64 @@
+<trace-info>
+<contact>
+<name>CHANGEME: Your name goes here</name>
+<dept>CHANGEME: Your dept goes here</dept>
+<email>CHANGEME: Your email goes here</email>
+<phone>CHANGEME: Your phone goes here</phone>
+</contact>
+<workload>
+<name>CHANGEME: Workload name goes here </name>
+
+<isv>CHANGEME: Name of ISV goes here</isv>
+
+<version>CHANGEME: Version of the app goes here</version>
+
+<!-- A description of the compiler(s) and their options used. 
+  Should match the field in the filename, except this can be formatted
+  for readability. -->
+<compiler>CHANGEME: Name and version of the compiler go here</compiler>
+
+<!-- Intel market segment. Currently, should be one of 'desktop',
+  'server', 'mobile' or 'handheld', although this is not grammatically
+  enforced since it may change. -->
+<segment>CHANGEME: Segment name goes here</segment>
+
+<!-- Type of application. Examples: 'Office Productivity', 
+  'Content Creation', 'Internet', 'Multimedia', '3D Game'.  --> 
+ <category>CHANGEME: Category name goes here</category> 
+
+<!-- A sentence or so describing the application and workload. -->
+<description>
+CHANGEME: Description goes here.
+</description>
+
+<!-- A sentence or so about why this application is important to Intel. -->
+<importance>
+CHANGEME: Importance goes here.
+</importance>
+
+<!-- A description of a particular performance issue that is known or
+  suspected. Examples: '2GHz P4/ 1.2GHz K7 scaling = 0.9.', 
+  'Contains many unaligned load operations.'  
+  You can have more than one. -->
+<performance-issue>
+CHANGEME: Performance issue goes here.
+</performance-issue>
+
+<!-- How the application was setup and run, datasets used, etc. -->
+<configuration>
+CHANGEME: SW configuration of the application goes here.
+</configuration>
+
+<!-- Native run-time information goes here: EM64T, Opteron, IPF etc. -->
+<other>
+<![CDATA[
+NATIVE TIME
+CHANGEME: Native run-time/score on EM64T
+CHANGEME: Native run-time/score on IA32 (if known)
+CHANGEME: Native run-time/score on Opteron (if known)
+CHANGEME: Native run-time/score on IPF (if known)
+]]>
+</other>
+
+</workload>
+

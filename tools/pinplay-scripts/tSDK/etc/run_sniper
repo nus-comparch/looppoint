@@ -1,0 +1,156 @@
+#!/bin/sh
+# Bug reports and comments to Igor.Ermolaev@intel.com
+base=$(dirname $(readlink -f ${BASH_SOURCE[0]:-$0}))
+[ -r $base/sniper/snipervars.sh ] || exit
+source $base/sniper/snipervars.sh --purge
+
+if [ -n "$1" ] && [ ${1:0:1} == - ];then
+  pltf=${1#-};shift
+  tmp=${pltf%/[0-9]*};if [ "$tmp" != "$pltf" ];then tpn="${pltf##*/}";pltf="$tmp"; fi
+  pltm=${pltf%%+*}
+  pltb=${pltm%%-*}
+  unset cfgf
+  if [ -n "$tpn" ];then
+     cfgv=( "$pltf" "$pltm" )
+  else
+     cfgv=( "${pltf}1c" "${pltm}1c" "${pltb}1c-${pltm#*-}" "$pltf" "$pltm" )
+  fi
+  for cfgd in "$base/etc/sniper-config" "$base/sniper/config.$pltb" "$base/sniper/config";do
+     for cfgn in "${cfgv[@]}";do
+        cfgf="$cfgd/$cfgn.cfg"
+        if [ -r "$cfgf" ];then break 2; fi
+     done
+  done
+  cfgn=$(basename "$cfgf")
+  cfgd=$(dirname "$cfgf")
+  unset cfgi
+  plti=${pltf#*+}
+  if [ "$plti" == "$pltf" ];then
+     unset plti
+  else
+     #incl=(`echo "$plti"|tr '+' ' '`)
+     incl=(${plti//+/ })
+     for i in ${incl[@]};do
+        for cfgid in "$base/etc/sniper-config" "$base/sniper/config.$pltb" "$base/sniper/config";do
+           for cfgin in "${pltm}-$i" "$i";do
+              cfgif="$cfgid/$cfgin.cfg"
+              if [ -r "$cfgif" ];then break 2; fi
+           done
+        done
+        cfgi=${cfgi:+$cfgi }' -c '"$cfgif"
+     done
+  fi
+fi
+
+while [ $# -ne 0 ];do
+   sift="$1"
+   basename="${sift%.sift}"
+   if [ "$basename" != "$sift" ];then break; fi
+   shift
+done
+if [ $# -eq 0 ];then
+   unset sift basename
+else
+   if [ ! -e "$sift" ];then
+     if [ -x $base/sniper/lit2sift ];then 
+        $base/sniper/lit2sift --no-idle-time -o "$sift" "$basename"
+     elif [ -x $base/sniper/tools/lit2sift ];then 
+        $base/sniper/tools/lit2sift --no-idle-time -o "$sift" "$basename"
+     else
+        exit
+     fi
+   fi
+   shift
+fi
+
+outdir="$1";shift
+if [ -n "$sift" ] && [ -n "$cfgn" ];then
+   siftdir="$(dirname "$sift")"
+   if [ "$outdir" == -r ];then outdir="$siftdir/$1";shift; fi
+   if [ -z "$outdir" ];then
+      outdir="$siftdir"
+   elif [ "$(readlink -f "$siftdir")" != "$(readlink -f "$outdir")" ];then
+      sfx="${plti//+/-}"
+      outdir="$outdir.${cfgn%.cfg}"${sfx:+-$sfx}${tpn:+_$tpn}
+   fi
+fi
+
+action=sim+rpt
+unset clrs use_lcat
+if [  "$1" == -clear_stats      ];then clrs=$2     ;shift 2; fi
+if [  "$1" == --preload-memory  ];then use_lcat=mfp;shift  ; fi
+if [  "$1" == --preload-beg-end ];then use_lcat=pre;shift  ; fi
+if [  "$1" == --report-only     ];then action=rpt  ;shift  ; fi
+if [[ "$1" == --pipetrace=*    ]];then action=pipe ;         fi
+
+bbprf="$outdir/sim.bbprofile"
+
+if [ -n "$sift" ] && [ -n "$cfgf" ] && [ -r "$sift" ] && [ -r "$cfgf" ];then
+   if [ ! -r "$bbprf" ] || [ $action != rpt ];then
+      if [ -n "$basename" ];then
+         siftlen=`gzip -dc $basename.lit.gz 2>/dev/null|grep '#total litcount'|awk '{print $3}'`
+         if [ -z "$siftlen" ];then siftlen=`cat $basename.lit 2>/dev/null|grep '#total litcount'|awk '{print $3}'`; fi
+         if [ -z "$siftlen" ];then siftlen=`bzip2 -dc $basename.lit.bz2 2>/dev/null|grep '#total litcount'|awk '{print $3}'`; fi
+         if [ -z "$siftlen" ];then siftlen=`cat $basename.result 2>/dev/null|grep 'inscount:'|awk '{print $2}'`; fi
+      fi
+      if [ -z "$use_lcat" ] && [ -r "$basename.tzcat.gz" ];then use_lcat=mfp; fi # =default; fi
+      if [ "$use_lcat" == mfp ] && [ ! -r "$basename.mfp.tzcat.gz" ];then unset use_lcat; fi
+      if [ -n "$clrs" ];then
+         siftwrm=$clrs
+      elif [ -n "$siftlen" ] && ( [ -z "$use_lcat" ] || [ $siftlen -lt 100000 ] );then
+         siftwrm=$((siftlen*10/100))
+      elif [ -n "$use_lcat" ];then
+         siftwrm=100000
+      else
+         siftwrm=1000000
+      fi
+      unset siftlen # we need to get it from SIFT trace itself, till then it's approximate and we shouldn't use it
+      if [ $siftwrm != 0 ];then
+         clear_stats="-g --core/hook_periodic_ins/ins_global=$((siftwrm)) -g --core/hook_periodic_ins/ins_per_core=$((siftwrm)) --roi-script -s warmup:$siftwrm"
+      else
+         unset clear_stats
+      fi
+      if [ "$use_lcat" == mfp ];then
+         warmup_lcat="--traces-warmup=$basename.mfp.tzcat.gz --traces-warmup-ptov=$basename.ptov"
+      elif [ "$use_lcat" == pre ];then
+         $base/mfp2pre $basename.mfp.tzcat.gz 0.05 0.05
+         warmup_lcat="--traces-warmup=$basename.pre.tzcat.gz --traces-warmup-ptov=$basename.ptov"
+      elif [ -z "$use_lcat" ] && [ -r "$basename.tzcat.gz" ];then
+         warmup_lcat=--traces-no-warmup
+      else
+         unset warmup_lcat
+      fi
+      $base/sniper/run-sniper -c $cfgf${cfgi:+ $cfgi}${tpn:+ --cores 1:$tpn}${clear_stats:+ $clear_stats} --bb-profile --bb-profile-opts=--rel-mpki,--no-hide-zero --disasm -d "$outdir" --traces="$sift"${warmup_lcat:+ $warmup_lcat} "$@"
+   fi
+fi
+
+if [ -n "$basename" ] && [ -s "$bbprf" ] && [ `grep '\ssymbol\s\+module$' "$bbprf"|wc -l` != '1' ];then
+   $base/../annotate $basename.procinfo.xml 's/([[:xdigit:]]+)(\s*\+\d+)(.*)$/$1$2$3$f1   $m1/' <"$bbprf"|sed -e 's/^\(basicblock\s.\+\sdram\s\+symbol\)$/\1   module/' >"$bbprf.ann"
+   [ -s "$bbprf.ann" ] && mv -fu "$bbprf.ann" "$bbprf"
+fi
+
+[ -s "$outdir/sim.disasm.bz2" ] && bzip2 -df "$outdir/sim.disasm.bz2"
+[ -s "$outdir/sim.disasm.gz" ] && gzip -df "$outdir/sim.disasm.gz"
+
+if [ -s "$bbprf" ];then
+   sed -e 's/\s--\s/ 0.0 /g' -e 's/\([0-9a-zA-Z]\+\)\s*+\([0-9]\+\)/\1 \2/' -e 's/\s(\%)\s/ % /g' -e 's/\(\S\+\)\s\((\%)\|\%\)/%\1/g' -e 's/\s\+/\t/g' -e 's/^Total:\t\(.\+\)$/Total:\t\t\t\1\t\t/' <"$bbprf"|$base/mix2prf >"$outdir/sim.csv"
+fi
+
+if [ -s "$outdir/sim.disasm" ];then
+   if [ -n "$basename" ];then
+      if [ -s "$basename.procinfo.xml" ];then
+        syms="$basename.procinfo.xml"
+      elif [ -s "$basename.procinfo.xml.gz" ];then
+        syms="$basename.procinfo.xml.gz"
+      elif [ -s "$basename.procinfo.xml.bz2" ];then
+        syms="$basename.procinfo.xml.bz2"
+      fi
+   fi
+   $base/../python3 -OO $base/../analyze "$outdir/sim.disasm" -not-phases${syms:+ $syms} >"$outdir/sim.s"
+   echo >>"$outdir/sim.s"
+   echo ';' -use-sim sniper -$pltf -clear_stats $siftwrm -disasm sim.disasm >>"$outdir/sim.s"
+fi
+
+if [ -s "$outdir/sim.stats.sqlite3" ];then
+   cdir="$PWD";cd "$outdir";$base/sniper/tools/roofline.py >roofline.out 2>/dev/null;cd "$cdir"
+fi

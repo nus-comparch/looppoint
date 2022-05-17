@@ -1,0 +1,18 @@
+#!/bin/sh
+# Bug reports and comments to Igor.Ermolaev@intel.com
+base=$(dirname $(readlink -f ${BASH_SOURCE[0]:-$0}))
+module=$1
+shift
+re='^[0-9]+(:[0-9]+)?$';if [[ ! "$1" =~ $re ]]; then
+   sel=$1
+   if [[ ! "$1" =~ ^[^:]+:[0-9]+$ ]]; then shift; fi
+   re='^[0-9]+(:[0-9]+)?$';if [[ ! "$1" =~ $re ]]; then
+      if [ $# -eq 1 ]; then
+         $base/get_disasm $module $sel | $base/get_loop $1 5 5 -l -s -f -n 0
+      else
+         $base/get_disasm $module $sel | $base/get_loop "$@"
+      fi
+      exit
+   fi
+fi
+$base/get_disasm $module -r "$@" | $base/get_loop "$@" -- 5 5 -l -s -f -n 0

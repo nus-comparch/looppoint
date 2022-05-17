@@ -1,0 +1,42 @@
+#!/bin/sh
+# Bug reports and comments to Igor.Ermolaev@intel.com
+base=$(dirname $(readlink -f ${BASH_SOURCE[0]:-$0}))
+trace=$1
+if [ $# -gt 1 ];then 
+   shift
+   source $base/gather -record "$@"
+fi
+strace=$TRACING_SDK_STRACE
+if [ -z "$strace" ] || [ ! -d "$strace" ];then
+   echo
+   echo Error: Replay isn\'t found
+   echo
+   exit
+fi
+anchor=`ls -t1 $strace/{loop,func,call,path}.*.s 2>/dev/null|head -n 1|xargs basename`
+isa=$(basename $anchor .s);isa="${isa#loop.}";isa="${isa#func.}";isa="${isa#call.}";isa="${isa#path.}"
+rm -rf rgn.$trace.$isa;mv $strace rgn.$trace.$isa;strace=rgn.$trace.$isa
+
+result=`find $strace -name '*.0.result' -exec grep -wq run_sde-command-line {} \; -print`
+if [ -z "$result" ];then
+   echo
+   echo Error: Base log isn\'t found
+   echo
+   exit
+fi
+target=`grep -w run_sde-command-line $result|sed 's/^.*:\s\+\(.\+\)\s\+-record.*$/\1/'`
+nthreads=`grep -w num_static_threads $result|awk '{print $2}'`
+if [ -z "$nthreads" ];then nthreads=1; fi
+
+$base/sde/sde $target -p -xyzzy -p -reserve_memory -p ${result/%.0.result/.address} -t sde-cmpsim.so -xyzzy -threads $nthreads -pinplay -replay:basename ${result%.0.result} -pinplay:msgfile ${result/%.0.result/.play} \
+-FLC 32 -MLC 256 \
+-hier 1,1 \
+-o $strace/lcat \
+-phaselen 1000 \
+-gentrace \
+-- $base/sde/intel64/nullapp
+mv $strace/lcat.gz $strace/lcat.out.gz
+
+gzip -dc $strace/lcat.trace.gz|awk '{print $1,$2,$3}'|$base/compresslt|gzip --best >$strace/lcat.tzcat.gz
+
+cur=$PWD;cd $strace;$base/pack_trace $cur/lcat.$trace.$isa $anchor '*.0.result';cd $cur

@@ -1,0 +1,368 @@
+#!/usr/bin/perl -w
+# Bug reports and comments to Igor.Ermolaev@intel.com
+use strict;
+no warnings 'portable';
+use File::Spec;
+
+use constant { FALSE=>0, TRUE=>-1 };
+
+use constant { PRF_CSV=>0, PRC_XML=>1, WGT_LST=>2 };
+use constant { CSV_NONE=>0, CSV_SNIPER=>1 };
+
+my $output = PRF_CSV;
+if( $#ARGV >= 0 )
+{
+   if   ( $ARGV[0] eq '--prc-xml' ){ $output = PRC_XML; }
+   elsif( $ARGV[0] eq '--wgt-lst' ){ $output = WGT_LST; }
+}
+
+my $cur_tid   = undef;
+my $cur_tid_x = undef;
+my $thrds_cnt = 0;
+my %counts    = ();
+my %blocks    = ();
+my %modules   = ();
+my $img_seen  = TRUE;
+my $csv_type  = CSV_NONE;
+my @csv_data  = ();
+my %csv_idxs  = ();
+
+our %csv_cols = ();
+our %map_cols = ( '\%cycles', 'pcycles', 'cycles', 'cycles', '\%instructions', 'pinstrs', 'instructions', 'instrs', 'ipc', 'ipc', 'br\.mpki', 'brmiss', 'tlb\.mpki', 'tlbmiss', 'l2\.mpki', 'l2miss', 'l3\.mpki', 'l3miss', 'basicblock', 'addr', 'function', 'func', 'symbol', 'func', 'module', 'modl' );
+
+sub process_header
+{
+   my @header = split /\t/o, shift;
+   for( my $i = 0; $i <= $#header; $i++ )
+   {
+      while( my ( $cap, $fld ) = each %map_cols )
+      {
+         $csv_cols{$fld} = int $i if $header[$i] =~ /$cap/i;
+      }
+   }
+} 
+
+while( <STDIN> )
+{
+   if( $csv_type == CSV_SNIPER )
+   {
+      chomp;
+      my @data = split /\t/o, $_;
+      next if $#data < $csv_cols{addr} || ! ( $data[$csv_cols{addr}] =~ /^\s*[[:xdigit:]]+\s*$/o );
+      my $func = $data[$csv_cols{func}];
+      my $modl = $data[$csv_cols{modl}];
+      my $addr = hex $data[$csv_cols{addr}];
+      my $idx  = undef;
+      if( ! exists $csv_idxs{$modl} || ! exists $csv_idxs{$modl}{$func} )
+      {
+         push @csv_data, { addr=>$addr };
+         $idx = $#csv_data;$csv_idxs{$modl}{$func} = $idx;
+         for( 'cycles', 'instrs', 'pcycles', 'pinstrs', 'ipc', 'l2miss', 'l3miss', 'brmiss', 'tlbmiss' ){ $csv_data[$idx]{$_} = [] if exists $csv_cols{$_}; }
+      }
+      else
+      {
+         $idx = $csv_idxs{$modl}{$func};
+      }
+      if( exists $csv_cols{pcycles} )
+      {
+         my $val = $data[$csv_cols{pcycles}];$val =~ s/%$//o;
+         push @{$csv_data[$idx]{pcycles}}, 0.0+$val;
+      }
+      if( exists $csv_cols{pinstrs} )
+      {
+         my $val = $data[$csv_cols{pinstrs}];$val =~ s/%$//o;
+         push @{$csv_data[$idx]{pinstrs}}, 0.0+$val;
+      }
+
+      for( 'ipc', 'l2miss', 'l3miss', 'brmiss', 'tlbmiss' ){ push @{$csv_data[$idx]{$_}}, 0.0+$data[$csv_cols{$_}] if exists $csv_cols{$_}; }
+
+      push @{$csv_data[$idx]{cycles}}, int $data[$csv_cols{cycles}] if exists $csv_cols{cycles};
+      push @{$csv_data[$idx]{instrs}}, int $data[$csv_cols{instrs}] if exists $csv_cols{instrs};
+
+      $csv_data[$idx]{addr} = $addr if $addr < $csv_data[$idx]{addr};
+   }
+   elsif( /\s*basicblock.*\t\s*instructions.*\t\s*ipc.*\t\s*(function|symbol).*\t\s*module/io )
+   {
+      process_header $_;
+      $csv_cols{pcycles} = $csv_cols{cycles}+1 if exists $csv_cols{cycles};
+      $csv_cols{pinstrs} = $csv_cols{instrs}+1 if exists $csv_cols{instrs};
+      $csv_type          = CSV_SNIPER;
+   }
+   elsif( /\s*basicblock.*\t\s*module.*\t\s*\%cycles.*\t\s*function.*\t\s*instructions.*\t\s*cycles/io )
+   {
+      process_header $_;
+      delete $csv_cols{pcycles};
+      $csv_type = CSV_SNIPER;
+   }
+   if( /EMIT_IMAGE_ADDRESSES/io )
+   {
+      $img_seen = TRUE;
+   }
+   elsif( /END_IMAGE_ADDRESSES/io )
+   {
+      $img_seen = FALSE;
+   }
+   elsif( $img_seen == TRUE && /^\s*(.*\S)\s+([[:xdigit:]]+)\s+([[:xdigit:]]+)/io )
+   {
+      $modules{$1} = { base=>hex $2, size=>(hex $3) - (hex $2) + 1 };
+   }
+   elsif( /^\s*#\s*FUNCTION\s+TOTALS\s+FOR\s+TID\s*(\d+)/io )
+   {
+      $cur_tid   = int $1;
+      $thrds_cnt = $cur_tid+1 if $cur_tid+1 > $thrds_cnt;
+   }
+   elsif( /^\s*#\s*END\s+FUNCTION\s+TOTALS/io )
+   {
+      $cur_tid = undef;
+   }
+   elsif( /^\s*#\s*EMIT_TOP_BLOCK_STATS\s+FOR\s+TID\s*(\d+)/io )
+   {
+      $cur_tid_x = int $1;
+      $thrds_cnt = $cur_tid_x+1 if $cur_tid_x+1 > $thrds_cnt;
+   }
+   elsif( /^\s*#\s*END_TOP_BLOCK_STATS/io )
+   {
+      $cur_tid_x = undef;
+   }
+   elsif( /^\s*\d+:\s*([0-9,]+)\s+\d+\.\d+\s+\d+\.\d+\s+(([0-9,]+)\s+)?([[:xdigit:]]+)\s+(\S+)\s+IMG\s*:\s+(.+)$/o )
+   {
+      if( defined $cur_tid )
+      {
+         @{$counts{$6}{$5}{$4}} = () if !exists $counts{$6}{$5}{$4};
+         my $rec = \@{$counts{$6}{$5}{$4}};
+         for( my $t = 0; $t < $thrds_cnt; $t++ ){ $$rec[$t] = { instrs=>0, calls=>0 } if !defined $$rec[$t]; }
+         my $it = $1;
+         my $ct = $3;
+         $it =~ tr/,//d;
+         $$rec[$cur_tid]{instrs} += int $it;
+         if( defined $ct )
+         {
+            $ct =~ tr/,//d;
+            $$rec[$cur_tid]{calls} += int $ct;
+         }
+      }
+   }
+   elsif( /^\s*BLOCK\s*:\s*(\d+)\s*PC\s*:\s*([[:xdigit:]]+)\s*ICOUNT\s*:\s*(\d+)\s*EXECUTIONS\s*:\s*(\d+)\s*#\s*BYTES\s*:\s*(\d+).*FN\s*:\s*(\S+)\s+IMG\s*:\s*(\S+)/io )
+   {
+      if( defined $cur_tid_x )
+      {
+         my $addr = hex $2;
+         $blocks{$7}{$6} = { addr=>$addr, instrs=>[] } if !exists $blocks{$7}{$6};
+         my $rec = $blocks{$7}{$6};
+         for( my $t = scalar @{$rec->{instrs}}; $t < $thrds_cnt; $t++ ){ push @{$rec->{instrs}}, 0; }
+         $rec->{instrs}[$cur_tid_x] += int $3;
+         $rec->{addr} = $addr if $addr < $rec->{addr};
+      }
+   }
+}
+if( !%counts )
+{
+   while( my ($modl,$r1) = each %blocks )
+   {
+      while( my ($func,$src) = each %{$r1} )
+      {
+         @{$counts{$modl}{$func}{$src->{addr}}} = ();
+         my $dst = \@{$counts{$modl}{$func}{$src->{addr}}};
+         for(@{$src->{instrs}}){ push @{$dst}, { instrs=>$_, calls=>0 }; }
+      }
+   }
+}
+
+my @list = ();
+my $total = 0;
+my $total_cycles = 0;
+
+if( $csv_type == CSV_SNIPER )
+{
+   my @evt = ( 'brmiss', 'l2miss', 'l3miss', 'tlbmiss' ); 
+   while( my ($modl,$r1) = each %csv_idxs )
+   {
+      while( my ($func,$idx) = each %{$r1} )
+      {
+         push @list, { cpi=>0.0, addr=>$csv_data[$idx]{addr}, modl=>$modl, func=>$func };
+         my $ldx = $#list;for( 'pcycles', 'pinstrs', 'brmiss', 'l2miss', 'l3miss', 'tlbmiss' ){ $list[$ldx]{$_} = 0.0 if exists $csv_cols{$_}; }
+         $list[$ldx]{cycles} = 0 if exists $csv_cols{cycles};
+         $list[$ldx]{instrs} = 0 if exists $csv_cols{instrs};
+ 
+         my $cnt = 1;
+         if   ( exists $csv_data[$idx]{ipc   } ){ $cnt = scalar @{$csv_data[$idx]{ipc   }}; }
+         elsif( exists $csv_data[$idx]{cycles} ){ $cnt = scalar @{$csv_data[$idx]{cycles}}; }
+         elsif( exists $csv_data[$idx]{instrs} ){ $cnt = scalar @{$csv_data[$idx]{instrs}}; }
+         if( $cnt == 1 )
+         {
+            for( 'cycles', 'instrs', 'pcycles', 'pinstrs', 'brmiss', 'l2miss', 'l3miss', 'tlbmiss' ){ $list[$ldx]{$_} = $csv_data[$idx]{$_}[0] if exists $csv_data[$idx]{$_}; }
+            if( exists $csv_cols{instrs} ){ for( @evt ){ $list[$ldx]{$_.'_cnt'} = int( $list[$ldx]{$_}*$list[$ldx]{instrs}/1000.0 ) if exists $csv_data[$idx]{$_}; } }
+            $list[$ldx]{cpi} = 1.0/$csv_data[$idx]{ipc}[0] if exists $csv_data[$idx]{ipc} && $csv_data[$idx]{ipc}[0] > 1e-9;
+         }
+         else
+         {
+# c0%*C+c1%*C    c0%+c1%   C
+# ----------- == ------- * -
+# i0%*I+i1%*I    i0%+i1%   I
+#
+# i0%*I
+# -----  == IPC0, C/I = i0%/c0%/IPC0
+# c0%*C
+#
+# m0*i0%*I+m1*i1%*I    m0*i0%+m1*i1%
+# ----------------- == -------------
+#    i0%*I+   i1%*I       i0%+   i1%
+
+            my %avg = ( cpi=>0.0 );
+            for( @evt ){ $avg{$_} = 0.0 if exists $csv_cols{$_}; }
+ 
+            my $instr_key  = exists $csv_cols{instrs} ? 'instrs' : 'pinstrs';
+            my $non_zeroes = 0;
+            for( my $i = 0; $i < $cnt; $i++ )
+            {
+               for( 'cycles', 'instrs', 'pcycles', 'pinstrs' ){ $list[$ldx]{$_} += $csv_data[$idx]{$_}[$i] if exists $csv_cols{$_}; }
+               for( @evt ){ $avg{$_} += $csv_data[$idx]{$_}[$i]*$csv_data[$idx]{$instr_key}[$i] if exists $avg{$_}; }
+               if( exists $csv_data[$idx]{pcycles} && exists $csv_data[$idx]{pinstrs} && exists $csv_data[$idx]{ipc} )
+               {
+                  my $val = $csv_data[$idx]{pcycles}[$i]*$csv_data[$idx]{ipc}[$i];
+                  if( $val > 1e-9 )
+                  {
+                     $avg{cpi} += $csv_data[$idx]{pinstrs}[$i]/$val;
+                     $non_zeroes++;
+                  }
+               }
+            }
+            if( exists $list[$ldx]{pinstrs} && exists $list[$ldx]{pcycles} )
+            {
+               my $val = $list[$ldx]{pinstrs}*$non_zeroes;
+               $list[$ldx]{cpi} = $list[$ldx]{pcycles}*$avg{cpi}/$val if $val > 1e-9;
+            }
+
+            for( @evt ){ $list[$ldx]{$_} = $avg{$_}/$list[$ldx]{$instr_key} if exists $avg{$_} && $list[$ldx]{$instr_key} > 1e-9; }
+            if( $instr_key eq 'instrs' ){ for( @evt ){ $list[$ldx]{$_.'_cnt'} = int( $avg{$_}/1000.0 ) if exists $avg{$_}; } }
+         }
+         $list[$ldx]{cpi} = 1.0*$list[$ldx]{cycles}/$list[$ldx]{instrs} if exists $list[$ldx]{cycles} && $list[$ldx]{instrs};
+         if   ( exists $list[$ldx]{cycles } ){ $list[$ldx]{sum} = $list[$ldx]{cycles }; }
+         elsif( exists $list[$ldx]{pcycles} ){ $list[$ldx]{sum} = $list[$ldx]{pcycles}; }
+         elsif( exists $list[$ldx]{instrs } ){ $list[$ldx]{sum} = $list[$ldx]{instrs }; }
+         elsif( exists $list[$ldx]{pinstrs} ){ $list[$ldx]{sum} = $list[$ldx]{pinstrs}; }
+
+         $total        += $list[$ldx]{instrs} if exists $list[$ldx]{instrs};
+         $total_cycles += $list[$ldx]{cycles} if exists $list[$ldx]{cycles};
+      }
+   }
+}
+else
+{
+   while( my ( $modl, $r1 ) = each %counts )
+   {
+      while( my ( $func, $r2 ) = each %{$r1} )
+      {
+         while( my ( $addr, $cnts ) = each %{$r2} )
+         {
+            my $instrs = 0;
+            my $calls  = 0;
+            my $imax   = undef;
+            for(@{$cnts}){ $instrs += $_->{instrs}; $imax = $_->{instrs} if !defined $imax || $_->{instrs} > $imax; $calls += $_->{calls}; };
+            push @list, { sum=>$instrs, instrs=>$instrs, imax=>$imax, pf=>($instrs/$imax), calls=>$calls, addr=>$addr, modl=>$modl, func=>$func };
+            $total += $instrs;
+         }
+      }
+   }
+}
+for(@list)
+{
+   $_->{pcycles} = 100.0*$_->{cycles}/$total_cycles if ! exists $_->{pcycles} && exists $_->{cycles} && $total_cycles > 1e-9;
+   $_->{pinstrs} = 100.0*$_->{instrs}/$total        if ! exists $_->{pinstrs} && exists $_->{instrs} && $total        > 1e-9;
+}
+
+if( $output == PRF_CSV || $output == WGT_LST )
+{
+    @list = sort { $b->{sum} <=> $a->{sum} } @list;
+}
+elsif( $output == PRC_XML )
+{
+    @list = sort { $a->{modl} eq $b->{modl} ? hex $a->{addr} <=> hex $b->{addr} : $a->{modl} cmp $b->{modl} } @list;
+}
+
+if( $output == PRF_CSV )
+{
+   if( $csv_type == CSV_NONE )
+   {
+      print "INST_RETIRED,function,Parallel Factor,calls,rva,module\n";
+      for( @list ){ printf "%.3f,%s,%.1f,%d,0x%s,%s\n", $_->{pinstrs}, $_->{func}, $_->{pf}, $_->{calls}, $_->{addr}, $_->{modl}; }
+      print "\nINST_RETIRED,function,Parallel Factor,calls,rva,module\n";
+      for( @list ){ printf "%d,%s,%.1f,%d,0x%s,%s\n"  ,  $_->{instrs}, $_->{func}, $_->{pf}, $_->{calls}, $_->{addr}, $_->{modl}; }
+   }
+   elsif( $csv_type == CSV_SNIPER )
+   {
+      my %trans = ( l2miss=>'L2.MPKI', l3miss=>'L3.MPKI', tlbmiss=>'TLB.MPKI', brmiss=>'BR.MPKI' );
+      my @evt   = ( 'l3miss', 'tlbmiss', 'brmiss' );
+
+      print "CYCLES,function,INST_RETIRED,CPI,";
+      if( @list ){ for( @evt ){ print $trans{$_}, ',' if exists $list[0]{$_}; } }
+      print "rva,module\n";
+
+      for( @list )
+      {
+         printf "%.2f,%s,%.2f,%.3f,", $_->{pcycles}, $_->{func}, $_->{pinstrs}, $_->{cpi};
+         for my $e ( @evt ){ printf "%.3f,", $_->{$e} if exists $_->{$e}; }
+         printf "0x%x,%s\n", $_->{addr}, $_->{modl};
+      }
+
+      if( @list && exists $list[0]{instrs} )
+      {
+         print "\nCYCLES,function,INST_RETIRED,CPI,";
+         if( @list ){ for( @evt ){ print $trans{$_}, ',' if exists $list[0]{$_}; } }
+         print "rva,module\n";
+
+         for( @list )
+         {
+            printf "%d,%s,%d,%.3f,", $_->{cycles}, $_->{func}, $_->{instrs}, $_->{cpi};
+            for my $e ( @evt ){ printf "%d,", $_->{$e.'_cnt'} if exists $_->{$e.'_cnt'}; }
+            printf "0x%x,%s\n", $_->{addr}, $_->{modl};
+         }
+      }
+   }
+}
+elsif( $output == PRC_XML )
+{
+   my $header = <<EOH;
+<?xml version="1.0" standalone="yes" ?>
+<proc-info>
+<trigger-data
+OS_Computer_name='unknown'
+OS_User_name='unknown'
+OS_Version='unknown'
+/>
+EOH
+   print $header;
+   print "<process pid='0' name='unknown' cr3='0'>\n";
+   my $prv_modl = '';
+   foreach (@list)
+   {
+      if( $_->{modl} ne $prv_modl )
+      {
+         print "</module>\n" if $prv_modl ne '';
+         my ( $vol, $dir, $name ) = File::Spec->splitpath( $_->{modl} );
+         print "<module\n   path='$_->{modl}'\n   name='$name'\n";
+         if( exists $modules{$_->{modl}} )
+         {
+            printf "   base='0x%x'\n   size='%d'\n", $modules{$_->{modl}}{base}, $modules{$_->{modl}}{size};
+         }
+         else
+         {
+            printf "   base='0x%x'\n   size='%d'\n", 0, 0;
+         }
+         print ">\n";
+         $prv_modl = $_->{modl};
+      }
+      print "<symbol name='$_->{func}'\n        base='0x$_->{addr}' />\n";
+   }
+   print "</module>\n" if $prv_modl ne '';
+   print "</process>\n</proc-info>\n";
+}
+elsif( $output == WGT_LST )
+{
+   foreach (@list)
+   {
+      printf "%d %s %s\n", $_->{sum}, $_->{modl}, $_->{func};
+   }
+}
+
+exit( 0 );

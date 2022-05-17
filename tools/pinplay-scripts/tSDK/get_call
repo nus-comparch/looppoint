@@ -1,0 +1,260 @@
+#!/usr/bin/perl -w
+# Bug reports and comments to Igor.Ermolaev@intel.com
+use strict;
+no warnings 'portable';
+
+use constant { FALSE=>0, TRUE=>-1 };
+
+use constant
+{
+   SRC_LINE=>qr/^\s*[^:]+\:\d+\s*$/o,
+   ASM_LINE=>qr/^\s*([[:xdigit:]]+)\:\s*([[:xdigit:]][[:xdigit:]]\s+)*\s*(.+)$/o,
+   FLOW_INSTR=>qr/^([\w,]+)\s+\$?(0x)?([[:xdigit:]]+)\s*([<#]|$)/o,
+   IND_CALL=>qr/^([\w,]+)\s+\*(([-+]*\$?(0x)?[[:xdigit:]]+\(%?\w+\))|(%\w+))\s*(#|$)/o
+};
+
+my $cll_addr  = undef;
+my $ret_addr  = undef;
+my $src_line  = undef;
+my $any_sline = FALSE;
+
+my $cmd = join( ' ', @ARGV );
+if( $ARGV[0] eq '-c' )
+{
+   $cll_addr = lc $ARGV[1];
+   $cll_addr =~ s/^(0x)?0*([[:xdigit:]]+)/$2/o;
+   shift @ARGV;shift @ARGV;
+}
+elsif( $ARGV[0] eq '-r' )
+{
+   $ret_addr = lc $ARGV[1];
+   $ret_addr =~ s/^(0x)?0*([[:xdigit:]]+)/$2/o;
+   shift @ARGV;shift @ARGV;
+}
+elsif( $ARGV[0] eq '-a' )
+{
+   $any_sline = TRUE;
+   shift @ARGV;
+}
+else
+{
+   $src_line = $ARGV[0];
+   shift @ARGV;
+}
+
+my $instrs_bfr = undef;
+my $instrs_aft = undef;
+my $lines_wntd = FALSE;
+my $sep_wntd   = FALSE;
+my $filt_reqd  = FALSE;
+my $cll_name   = undef;
+my $call_pos   = undef;
+my $call_idx   = undef;
+
+my $i;
+for( $i = 0; $i <= $#ARGV; $i++ )
+{
+   $_ = $ARGV[$i];
+   if( /^\d+$/o )
+   {
+      if( defined $instrs_bfr )
+      {
+         $instrs_aft = $_;
+      }
+      else
+      {
+         $instrs_bfr = $_;
+      }
+   }
+   elsif( $_ eq '-l' )
+   {
+      $lines_wntd = TRUE;
+   }
+   elsif( $_ eq '-s' )
+   {
+      $sep_wntd = TRUE;
+   }
+   elsif( $_ eq '-f' )
+   {
+      $filt_reqd = TRUE;
+   }
+   elsif( $_ eq '-t' )
+   {
+      $cll_name = $ARGV[$i+1];
+      $i++;
+   }
+   elsif( $_ eq '-i' )
+   {
+      $call_pos = $ARGV[$i+1];
+      $call_idx = -1;
+      $i++;
+   }
+   else
+   {
+      last;
+   }
+}
+$instrs_bfr = 0 if !defined $instrs_bfr;
+$instrs_aft = 0 if !defined $instrs_aft;
+
+print "; $cmd\n";
+
+#print "$ret_addr\n";
+
+my @cache    = ();
+my $cache_on = FALSE;
+my $cur_func = undef;
+my $src_sptd = FALSE;
+my $rest     = undef;
+my $rest_ofs = undef;
+my @region   = ();
+
+my $cll_cnt = undef;
+my $cll_ofs = undef;
+my $cll_src = undef;
+my $beg_cnt = undef;
+my $beg_ofs = undef;
+my $beg_src = undef;
+
+
+while( <STDIN> )
+{
+   if( /^(0x)?[[:xdigit:]]+\s*\<([^\>\+]+)(\+(0x)?[[:xdigit:]]+)?\>\:/o )
+   {
+      $cur_func = $2;
+      @cache    = ();
+      $cache_on = TRUE;
+   }
+   next if $filt_reqd && ( /^\s*$/o || /.*\:$/o || /^;---/o );
+   push @cache, $_ if $cache_on == TRUE;
+   if( $_ =~ ASM_LINE )
+   {
+      my $instr = $3;
+      my $addr  = lc $1;
+         $addr =~ s/^(0x)?0*([[:xdigit:]]+)/$2/o; # must be the last
+      if( defined $ret_addr && $addr eq $ret_addr )
+      {
+         $cll_cnt = 2;
+         $cll_ofs = 0;
+         $cll_src = undef;
+         $beg_cnt = $instrs_bfr+2;
+         $beg_ofs = 0;
+         $beg_src = undef;
+      }
+      elsif( ( $src_sptd == TRUE || $any_sline == TRUE ) && ( $instr =~ FLOW_INSTR || $instr =~ IND_CALL ) )
+      {
+         if( $1 =~ /^call\w+/o )
+         {
+            my $call_sptd = TRUE;
+            if( defined $cll_name )
+            {
+               $call_sptd = FALSE;
+               if( $instr =~ /<([^+]+)>/o )
+               {
+                  $call_sptd = TRUE if $1 eq $cll_name;
+               }
+            }
+            if( $call_sptd == TRUE && ( !defined $call_idx || ++$call_idx == $call_pos ) )
+            {
+               $cll_cnt = 1;
+               $cll_ofs = 0;
+               $cll_src = undef;
+               $beg_cnt = $instrs_bfr+1;
+               $beg_ofs = 0;
+               $beg_src = undef;
+            }
+         }
+      }
+      if( defined $cll_cnt )
+      {
+         if( defined $rest )
+         {
+            print @region;
+            print ";-------------------------------------------------------\n" if $sep_wntd == TRUE;
+            print @cache;
+            print ";=======================================================\n" if $sep_wntd == TRUE;
+            $rest  = undef;
+         }
+         for( my $i = $#cache; $i >= 0; $i-- )
+         {
+            if( $cache[$i] =~ ASM_LINE )
+            {
+               if( $cll_ofs == 0 && --$cll_cnt == 0 )
+               {
+                  $cll_ofs = $i;
+               }
+               if( $beg_ofs == 0 && --$beg_cnt == 0 )
+               {
+                  $beg_ofs = $i;
+               }
+            }
+            else
+            {
+               if( !defined $cll_src && $cll_cnt == 0 )
+               {
+                  $cll_src = $cache[$i];
+               }
+               if( !defined $beg_src && $beg_cnt == 0 )
+               {
+                  $beg_src = $cache[$i];
+               }
+            }
+         }
+         @region = @cache[$beg_ofs..$cll_ofs-1];
+         unshift @region, $beg_src if defined $beg_src;
+         if( $sep_wntd == TRUE )
+         {
+            pop  @region while @region && !( $region[-1] =~ ASM_LINE );
+            push @region, ";--- $cur_func "."-" x ( 56 - 4 - 2 - length $cur_func )."\n";
+            push @region, $cll_src if defined $cll_src;
+         }
+         push    @region, $cache[$cll_ofs];
+   
+         splice @cache, 0, $cll_ofs+1;
+         unshift @cache, $cll_src if defined $cll_src && $sep_wntd == TRUE && @cache && $cache[0] =~ ASM_LINE;
+         $rest = $instrs_aft;
+
+         $cll_cnt = undef;
+      }
+   }
+   elsif( defined $src_line && $_ =~ SRC_LINE )
+   {
+      if( /(^|\/)\Q$src_line\E$/o )
+      {
+         $src_sptd = TRUE;
+      }
+      else
+      {
+         $src_sptd = FALSE;
+      }
+   }
+   if( defined $rest )
+   {
+      if( $rest == 0 )
+      {
+         @cache = ();
+      }
+      else
+      {
+         $rest-- if @cache && $cache[-1] =~ ASM_LINE;
+      }
+      if( $rest == 0 )
+      {
+         print @region;
+         print ";-------------------------------------------------------\n" if $sep_wntd == TRUE;
+         print @cache;
+         print ";=======================================================\n" if $sep_wntd == TRUE;
+         $rest  = undef;
+      }
+   }
+}
+      if( defined $rest )
+      {
+         print @region;
+         print ";-------------------------------------------------------\n" if $sep_wntd == TRUE;
+         print @cache;
+         print ";=======================================================\n" if $sep_wntd == TRUE;
+         $rest   = undef;
+      }
+
+exit 0;

@@ -1,0 +1,185 @@
+#!/bin/bash
+#
+# Get the phase info from PinPlay trace log files
+#
+# $Id: get_phases,v 1.7 2009/05/05 03:30:50 tmstall Exp tmstall $
+
+function usage {
+    USAGE0="Usage: $0 [output_file]"
+    USAGE1="   output_file    Output from running runpin script"
+    USAGE2="                  Defaults to file 'pinLIT_out.txt'"
+
+    echo "$USAGE0" 1>&2
+    echo "$USAGE1" 1>&2
+    echo "$USAGE2" 1>&2
+}
+
+# Cmd line option defaults
+#
+export FILE=pinLIT_out.txt
+
+# Parse command line options
+#
+while getopts "?h" c
+do
+    case $c in
+    h | \?)
+        usage
+        exit 0
+        ;;
+    esac
+done
+
+if [[ ! -z $1 ]]
+then
+   FILE=$1
+fi
+
+# Get the first "real" time (from the Linux time cmd) after the phase given in the
+# global "STRING".
+#
+function get_first_time() {
+    TIME=`awk -v string="$STRING" 'BEGIN {
+		found = 0
+	    }
+	    /'"$STRING"'/ {
+	        found = 1
+	    }
+	    /^real/ {
+		time = $2
+		if ( found == 1 ) {
+		    # printf "Native time: %s\n", time
+		    printf "%s  ", time
+		    found = 0
+		}
+	    } ' $FILE `
+}
+
+# Get the last "real" time (from the Linux time cmd) before the phase given in the
+# global "STRING".
+#
+function get_last_time() {
+    TIME=`awk -v string="$STRING" '
+	    /^real/ {
+	        time = $2
+	    }
+	    /'"$STRING"'/ {
+		# printf "Native time: %s\n", time
+		printf "%s  ", time
+	    } ' $FILE `
+}
+
+# Get the number of seconds.
+#
+function get_sec() {
+    TIME=`echo $TIME | sed -e 's/^0//' -e 's/m/ /' -e 's/s//'`
+    TIME=`echo $TIME | awk '{	sec = $NF
+			min = $1
+			if ( sec == min ) min = 0
+			# printf "min: %.3f  sec: %.3f\n", min, sec
+			printf "%.0f\n", min*60+sec
+		    }'`
+}
+
+# Check to see if the desired string is in the file.  If it's
+# there then calculate the slowdown ratio.  This function
+# uses get_first_time().
+#
+function calc_first_ratio() {
+
+    RATIO=0.0
+    TMP=`fgrep -c "$STRING" $FILE`
+    if [[ $TMP == 1 ]]
+    then
+	get_first_time
+	get_sec
+	if [[ $TIME != 0.0 && $NATIVE != 0.0 ]]
+	then
+	    RATIO=`echo "scale=0;$TIME/$NATIVE" | bc -l`
+	fi
+    fi
+}
+
+# Check to see if the desired string is in the file.  If it's
+# there then calculate the slowdown ratio.  This function
+# uses get_last_time().
+#
+function calc_last_ratio() {
+
+    RATIO=0.0
+    TMP=`fgrep -c "$STRING" $FILE`
+    if [[ $TMP == 1 ]]
+    then
+	get_last_time
+	get_sec
+	if [[ $TIME != 0.0 && $NATIVE != 0.0 ]]
+	then
+	    RATIO=`echo "scale=0;$TIME/$NATIVE" | bc -l`
+	fi
+    fi
+}
+
+# If there's tming data on a native run, then try to calculate various
+# slowdown ratios.
+#
+NATIVE_FOUND=`fgrep -c "Completed native run" $FILE`
+if [[ $NATIVE_FOUND == 1 ]]
+then
+    echo "================================"
+
+    STRING="Native run of application"
+    TMP=`fgrep -c "$STRING" $FILE`
+    if [[ $TMP == 1 ]]
+    then
+	get_first_time
+	get_sec
+	NATIVE=$TIME
+    fi
+    echo -n "Native time (sec):    "
+    echo $(printf "%'d\n" $NATIVE)
+
+
+    STRING="Generated whole program log"
+    calc_last_ratio
+    if [[ $RATIO != 0.0 ]]
+    then
+	echo -n "Logger time (sec):    "
+	echo $(printf "%'d\n" $TIME)
+	echo "Logger slow down:     ${RATIO}x"
+    fi
+
+    STRING="All whole program pinball replay runs completed"
+    calc_last_ratio
+    if [[ $RATIO != 0.0 ]]
+    then
+	echo -n "Replayer time (sec):  "
+	echo $(printf "%'d\n" $TIME)
+	echo "Replayer slow down:   ${RATIO}x"
+    fi
+
+    STRING="All relogging runs completed"
+    calc_last_ratio
+    if [[ $RATIO != 0.0 ]]
+    then
+	echo -n "Relogger time (sec):  "
+	echo $(printf "%'d\n" $TIME)
+	echo "Relogger slow down:   ${RATIO}x"
+    fi
+
+    STRING="All whole program CMPSim runs completed"
+    calc_last_ratio
+    if [[ $RATIO != 0.0 ]]
+    then
+	echo -n "WP CMPSim time (sec): "
+	echo $(printf "%'d\n" $TIME)
+	echo "WP CMPSim slow down:  ${RATIO}x"
+    fi
+
+    echo "================================"
+    echo
+fi
+
+# Get just the stuff we are interested in.
+#
+egrep "^\+\+\+|^\*\*\*|^real|^sys|^user|user.*elapsed" $FILE | egrep -v "STEP|\+\-\-"
+

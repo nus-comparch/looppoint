@@ -10,6 +10,8 @@ DOCKER_BUILD_OPT?=
 TZFULL=$(subst /, ,$(shell readlink /etc/localtime))
 TZ=$(word $(shell expr $(words $(TZFULL)) - 1 ),$(TZFULL))/$(word $(words $(TZFULL)),$(TZFULL))
 
+export SDE_BUILD_KIT=${PWD}/tools/sde-external-9.0.0-2021-11-07-lin
+
 run:
 	docker run --rm -it -v "${PWD}:${PWD}" --user $(shell id -u):$(shell id -g) -w "${PWD}" $(DOCKER_IMAGE)
 
@@ -30,6 +32,21 @@ pinkit:
 		patch -d tools -p 0 -i pin_alarms.patch ; \
 	fi
 
+sdekit:
+	@if [ ! -d "tools/sde-external-9.0.0-2021-11-07-lin" ]; then \
+		$(info Downloading SDE kit) \
+		wget -O - https://downloadmirror.intel.com/684899/sde-external-9.0.0-2021-11-07-lin.tar.xz  --no-check-certificate | tar -xf - -J -C tools/ ; \
+		cp -r tools/pinplay-scripts tools/sde-external-9.0.0-2021-11-07-lin/ ; \
+	fi
+
+looppoint: sdekit
+	make -C tools/src/Profiler TARGET=ia32
+	make -C tools/src/Profiler TARGET=intel64
+	make -C tools/src/Drivers TARGET=ia32
+	make -C tools/src/Drivers build TARGET=ia32
+	make -C tools/src/Drivers TARGET=intel64
+	make -C tools/src/Drivers build TARGET=intel64
+
 sniper: pinkit
 ifndef SNIPER_GIT_REPO
 	$(error Please set the SNIPER_GIT_REPO variable to the Sniper link. If you do not have one, visit https://snipersim.org/w/Download)
@@ -39,11 +56,11 @@ endif
 		git clone $(SNIPER_GIT_REPO) tools/sniper && \
 		mkdir -p tools/sniper/pin_kit && \
 		cp -r tools/pin-3.13-98189-g60a6ef199-gcc-linux/* tools/sniper/pin_kit && \
-		patch -d tools -p 0 -i sniper_looppoint.patch && \
-		make -C tools/sniper -j ; \
+		patch -d tools -p 0 -i sniper_looppoint.patch ; \
 	fi
+	make -C tools/sniper -j
 
-tools: sniper
+tools: looppoint sniper
 
 build: $(DOCKER_FILE).build
 
@@ -57,8 +74,11 @@ build-all: $(BUILD_ALL_TARGETS)
 clean:
 	rm -f *.pyc *.info.log  *.log 
 	make -C apps/demo/matrix-omp clean
+	make -C tools/src/Profiler clean
+	make -C tools/src/Drivers clean
+	make -C tools/sniper clean
 
-distclean:
-	rm -rf tools/pin-3.13-98189-g60a6ef199-gcc-linux tools/sniper results/
+distclean: clean
+	rm -rf tools/pin-3.13-98189-g60a6ef199-gcc-linux tools/sniper results/ tools/sde-external-9.0.0-2021-11-07-lin
 
-.PHONY: build build-all run-root run run-cwd apps pinkit tools clean distclean
+.PHONY: build build-all run-root run run-cwd apps sdekit pinkit tools clean distclean

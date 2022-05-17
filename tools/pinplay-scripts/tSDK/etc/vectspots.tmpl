@@ -1,0 +1,432 @@
+#****************************************************************************
+#                         INTEL CONFIDENTIAL
+#
+# Copyright 2012 Intel Corporation All Rights Reserved.
+#
+# The source code contained or described herein and all documents related
+# to the source code ("Material") are owned by Intel Corporation or its
+# suppliers or licensors.  Title to the Material remains with Intel
+# Corporation or its suppliers and licensors.  The Material contains
+# trade secrets and proprietary and confidential information of Intel
+# or its suppliers and licensors.  The Material is protected by worldwide
+# copyright and trade secret laws and treaty provisions.  No part of the
+# Material may be used, copied, reproduced, modified, published, uploaded,
+# posted, transmitted, distributed, or disclosed in any way without
+# Intel's prior express written permission.
+#
+# No license under any patent, copyright, trade secret or other
+# intellectual property right is granted to or conferred upon you by
+# disclosure or delivery of the Materials, either expressly, by
+# implication, inducement, estoppel or otherwise.  Any license under such
+# intellectual property rights must be express and approved by Intel in
+# writing.
+#
+#***************************************************************************
+
+# This report template is aimed at helping to identify spots which are likely
+# to be good places to run under HW simulator to get traces with good coverage.
+#
+# Contact: alexei.alexandrov@intel.com, ludmila.pakhomova@intel.com
+#
+# IMPORTANT NOTES
+# ~~~~~~~~~~~~~~~
+#
+# * It is assumed that "-loop-mode=loop-and-function" option is present on
+#   every amplxe-cl command line running this report template.  There is no way
+#   currently to specify the loop mode in the report template itself hence the
+#   requirement that user does it themselves.
+#
+# * The --group-by option is not supported for this template.  It is hardcoded
+#   to show hierarchical grouping by function / basic block with hierarchical
+#   sorting.  Optionally you can suppress the output of the basic block level,
+#   use no-bb-level knob for that.
+#
+# DESCRIPTION
+# ~~~~~~~~~~~
+#
+# Two primary distinct features of this report template are:
+#
+# * Support detection of leaf functions / loops with high self time.  Enabled
+#   using "-report-knob leaves-only=1" on the command line.  This mode turns on
+#   So, for example, consider this program flow:
+#
+#     /Function                 /CPU Time: Self
+#     main                      2.000
+#       foo                     0.000
+#         loop1                 0.500
+#           bar                 4.000
+#       baz                     1.000
+#         loop2                 0.750
+#
+#   Without the leaf filter the hotspot profile is:
+#
+#   /Function           /CPU Time: Self
+#   bar                 4.000
+#   main                2.000
+#   baz                 1.000
+#   loop2               0.750
+#   loop1               0.500
+#
+#   but if you enable the leaf filter you get this:
+#
+#   /Function           /CPU Time: Self
+#   bar                 4.000
+#   loop2               0.750
+#
+#   The other entries got filtered out since they are not leafs on the call tree.
+#
+# * Support for "reduction" of the grouped metrics by max() function applied to
+#   additional breakdown of the data by CPU.  So, while the template shows the
+#   final data by function and basic block, in the reduction mode it internally
+#   breaks the data down by CPU and then takes maximum value from per-CPU value
+#   set.  The reduction is applied to both function level and basic block level.
+#   This means that the value at the function level can be smaller than sum of
+#   values at the basic block level, this is expected (this is because
+#   max(a+b,c+d) <= max(a,c)+max(b,d)).  To validate the understanding of what is
+#   going on, you can turn off the reduction mode using "--report-knob
+#   no-reduction=1" command line option.
+#
+#   Example output with reduction off:
+#
+#   $ amplxe-cl.exe -r-f-t vectspots.tmpl -loop-mode=loop-and-function --show-as=samples -filter module=test.exe
+#
+#    Function                                          BB Start  BB Size  CPU_CLK_UNHALTED.CORE
+#    ------------------------------------------------  --------  -------  ---------------------
+#    [Loop@0x401230 at line 30 in _main]                                  17911
+#                                                      0x401230  18       17911
+#    [Loop@0x4011b4 in ?boo@@YAXXZ]                                       11755
+#                                                      0x4011b4  18       11755
+#    [Loop@0x401165 at line 16 in ?foo@@YAXXZ]                            2191
+#                                                      0x40116a  5        2053
+#                                                      0x401165  5        138
+#    ?bar@@YAXXZ                                                          1025
+#                                                      0x401130  38       729
+#                                                      0x401005  5        296
+#
+#   $ amplxe-cl.exe -r-f-t vectspots.tmpl -loop-mode=loop-and-function --show-as=samples -filter module=test.exe -rep-knob no-reduction=1
+#
+#    Function                                          BB Start  BB Size  H/W Context  CPU_CLK_UNHALTED.CORE
+#    ------------------------------------------------  --------  -------  -----------  ---------------------
+#    [Loop@0x401230 at line 30 in _main]                                  cpu_2        17911
+#                                                      0x401230  18       cpu_2        17911
+#    [Loop@0x4011b4 in ?boo@@YAXXZ]                                       cpu_7        11755
+#                                                      0x4011b4  18       cpu_7        11755
+#    [Loop@0x401230 at line 30 in _main]                                  cpu_1        9404
+#                                                      0x401230  18       cpu_1        9404
+#    [Loop@0x4011b4 in ?boo@@YAXXZ]                                       cpu_6        7816
+#                                                      0x4011b4  18       cpu_6        7816
+#    [Loop@0x4011b4 in ?boo@@YAXXZ]                                       cpu_0        4861
+#                                                      0x4011b4  18       cpu_0        4861
+#    [Loop@0x4011b4 in ?boo@@YAXXZ]                                       cpu_3        2310
+#                                                      0x4011b4  18       cpu_3        2310
+#    [Loop@0x401165 at line 16 in ?foo@@YAXXZ]                            cpu_1        2191
+#                                                      0x40116a  5        cpu_1        2053
+#                                                      0x401165  5        cpu_1        138
+#    [Loop@0x4011b4 in ?boo@@YAXXZ]                                       cpu_2        1356
+#                                                      0x4011b4  18       cpu_2        1356
+#    [Loop@0x401230 at line 30 in _main]                                  cpu_3        1355
+#                                                      0x401230  18       cpu_3        1355
+#    ?bar@@YAXXZ                                                          cpu_1        1025
+#                                                      0x401130  38       cpu_1        729
+#                                                      0x401005  5        cpu_1        296
+#    [Loop@0x4011b4 in ?boo@@YAXXZ]                                       cpu_1        943
+#                                                      0x4011b4  18       cpu_1        943
+#
+#
+#   This feature was requested to determine maximum per-HW-thread event count
+#   for a loop or a function.
+#
+# EXAMPLES
+# ~~~~~~~~
+#
+# Basic loop report with default max() reduction by HW thread:
+# $ amplxe-cl.exe -r <result dir> -r-f-t vectspots.tmpl -loop-mode=loop-and-function
+#
+# Loop report with default reduction and filter by specific loop:
+# $ amplxe-cl.exe -r <result dir> -r-f-t vectspots.tmpl -loop-mode=loop-and-function \
+#                   -filter function-mangled="[Loop@0x5b90c5 at line 34 in _main]"
+#
+# Loop report with reduction off (will output HW Thread column):
+# $ amplxe-cl.exe -r <result dir> -r-f-t vectspots.tmpl -loop-mode=loop-and-function \
+#                   -report-knob no-reduction=1
+#
+# Loop report with default reduction and leaf loop filter on:
+# $ amplxe-cl.exe -r <result dir> -r-f-t vectspots.tmpl -loop-mode=loop-and-function \
+#                   -report-knob leaves-only=1
+#
+# Function report with default reduction and no basic block level:
+# $ amplxe-cl.exe -r <result dir> -r-f-t vectspots.tmpl -report-knob no-bb-level=1
+
+import os
+import sys
+import perfconfigs.common as common
+import dicer2.env as env
+import dicerhelpers1.qlibrary as qlibrary
+import pythonhelpers1 as pythonhelpers
+import dicer2.util as util
+import dicer2.grid_handler as gh
+
+def data_sort_match(col, query, name):
+    return col.type.is_data
+
+def info_sort_match(col, query, name):
+    return col.type.is_info
+
+def grouping_sort_match(col, query, name):
+    return col.type.is_grouping
+
+def create_leaf_filter(env, col, row):
+    """Create a filter for top-down query by leaf rows"""
+
+    ttq = qlibrary.TableTreeQuery(env, col, row)
+    tt = ttq.execute()
+
+    def aux(cur_rows, filter_rows, leaf_filter):
+        has_leaves_of_interest = False
+        for i in cur_rows:
+            name = i.cell_value(list(tt.columns)[0])
+            is_leaf_of_interest = leaf_filter(name)
+            has_child_leaves_of_interest = aux(list(i.children), filter_rows, leaf_filter)
+            has_leaves_of_interest |= is_leaf_of_interest or has_child_leaves_of_interest
+            if is_leaf_of_interest and not has_child_leaves_of_interest:
+                filter_rows.append(i)
+        return has_leaves_of_interest
+
+    filter_rows = []
+    aux(tt.rows, filter_rows, lambda x: True)
+    #aux(tt.rows, filter_rows, lambda x: x.startswith('[Loop@'))
+    print >>sys.stderr, "\nFiltering using %d rows" % len(filter_rows)
+    tt.create_filter_by_rows("global", filter_rows, env.data_input[0])
+
+class reduced_grid(env.tables.user_table):
+    def __init__(self, env, tt_grid, f):
+        self.tt_grid = tt_grid
+
+        # Find out index of last grouping column, this is the column by which the
+        # reduction is done.
+        self.last_grouping_pos = -1
+        for i in tt_grid.display_columns():
+            if not i[0].type.is_grouping:
+                break
+            self.last_grouping_pos += 1
+        assert self.last_grouping_pos >= 0
+
+        col_names = tt_grid.get_column_names()
+        num_key_columns = self.last_grouping_pos
+        num_value_columns = len(col_names) - num_key_columns - 1
+        new_col_names = self._map_to_new_columns(col_names)
+        new_formatters = self._map_to_new_columns(tt_grid.get_formatters())
+        assert num_key_columns + num_value_columns == len(new_col_names)
+
+        dict_data = {}
+        for row in tt_grid:
+            key = self._get_row_key(row)
+            value = self._get_row_value(row)
+            prev_value = dict_data.get(key, None)
+            if prev_value:
+                assert len(value) == len(prev_value)
+                dict_data[key] = [f(prev_value[i], value[i]) for i in range(len(value))]
+            else:
+                dict_data[key] = value
+
+        data = []
+        for (k, v) in dict_data.iteritems():
+            new_row = list(k) + v
+            assert len(new_row) == len(new_col_names)
+            data.append(new_row)
+
+        env.tables.user_table.__init__(self, new_col_names, data)
+        self.set_formatters(new_formatters)
+
+    def _get_row_key(self, row):
+        return tuple(row[0:self.last_grouping_pos])
+
+    def _get_row_value(self, row):
+        return row[self.last_grouping_pos+1:]
+
+    def _map_to_new_columns(self, l):
+        return l[0:self.last_grouping_pos] + l[self.last_grouping_pos+1:]
+
+    def display_columns(self):
+        return self._map_to_new_columns(self.tt_grid.display_columns())
+
+
+def hackUpCpuTimeToInt(table):
+    """Hack the CPU Time data column if it is present to be integer
+    in milliseconds instead of double in seconds.  This is a hack that
+    should be made using a derived query instead but unfortunately now
+    the derived queries are displayed always as double values in CLI,
+    even if valueType is set to "int" or "count" """
+
+    col_names = table.get_column_names()
+    if "CPU Time" not in col_names:
+        return table
+
+    cpu_time_index = list(col_names).index("CPU Time")
+    assert cpu_time_index >= 0
+    col_names[cpu_time_index] = "CPU Time (msec)"
+
+    new_data = []
+    for i in table:
+        new_row = list(i)
+        new_row[cpu_time_index] = int(new_row[cpu_time_index] * 1000 + 0.5)
+        new_data.append(new_row)
+
+    ret_table = env.tables.user_table(col_names, new_data)
+    ret_table.set_formatters(table.get_formatters())
+    return ret_table
+
+
+def do_query(env, col, row, do_reduction=False):
+    ttq = qlibrary.TableTreeQuery(env, col, row)
+
+    tt = ttq.execute()
+    gw = qlibrary.table_tree_grid_wrapper(tt, include_top_level=False, env=env)
+    gw.set_translate_function(dmsg)
+
+    sort_asc = cmd_args['sort_ascending']
+    sort_desc = cmd_args['sort_descending']
+    common.verify_sort_columns(sort_asc, gw)
+    common.verify_sort_columns(sort_desc, gw)
+
+    data_sort = common.sort_info(data_sort_match, descending=True, use_only_first=True)
+    grouping_sort = common.sort_info(grouping_sort_match, descending=False)
+    info_sort = common.sort_info(info_sort_match, descending=False)
+
+    sort_list = []
+    sort_list.extend(common.add_sort_by(sort_desc, descending=True))
+    sort_list.extend(common.add_sort_by(sort_asc, descending=False))
+    sort_list.append(data_sort)
+    sort_list.append(grouping_sort)
+    sort_list.append(info_sort)
+
+    if do_reduction:
+        otable = reduced_grid(env, gw, max)
+    else:
+        otable = gw
+
+    ret = common.tt_copy_and_sort(otable, None, sort_list)
+    if cmd_args.get("show_as") == "percent":
+        return ret
+    else:
+        return hackUpCpuTimeToInt(ret)
+
+
+column_bys = """
+    <vectorQuery>
+      <queryRef>/CPUTime</queryRef>
+      <queryRef>/CPUFunctionModulePath</queryRef>
+      <queryRef>/CPUFunctionSourceFilePath</queryRef>
+    </vectorQuery>
+    <vectorQuery>
+      <queryRef>/%s/PMUEventType</queryRef>
+      <queryRef>/PMUFunctionModulePath</queryRef>
+      <queryRef>/PMUFunctionSourceFilePath</queryRef>
+    </vectorQuery>
+""" % ("PMUSampleCount" if cmd_args.get("show_as") == "samples" else "PMUEventCount")
+
+group_by_list = common.get_group_by_values(env, [])
+assert len(group_by_list) == 0, \
+            "This report template does not support --group-by CLI option"
+
+leaves_only = env.cmd_args['knob_list'].get('leaves-only') is not None
+use_reduction = env.cmd_args['knob_list'].get('no-reduction') is None
+no_bb_level = env.cmd_args['knob_list'].get('no-bb-level') is not None
+
+inner_grouping = ["function-mangled", "basic-block-only", "basic-block-size", "cpuid"]
+outer_grouping = ["function-mangled", "cpuid"]
+
+inner_query_map = common.create_query_map(env, column_bys, inner_grouping)
+assert len(inner_query_map) == 1
+outer_query_map = common.create_query_map(env, column_bys, outer_grouping)
+assert len(outer_query_map) == 1
+
+# Keep this after creating the query map, or the global filter will be reset.
+# But before doing the query, of course.
+if leaves_only:
+    filter_query_map = common.create_query_map(env, column_bys, "no-attr-callstack")
+    assert len(filter_query_map) == 1
+    (col_by, row_by) = filter_query_map[0]
+    create_leaf_filter(env, col_by, row_by)
+
+outer_table = do_query(env, outer_query_map[0][0], outer_query_map[0][1], use_reduction)
+if no_bb_level:
+    output_table = outer_table
+else:
+    # The basic block level is requested - do the merge of two tables now.
+    inner_table = do_query(env, inner_query_map[0][0], inner_query_map[0][1], use_reduction)
+
+    # Process the two requested tables to put the rows from the inner one under
+    # corresponding rows from the outer table.
+
+    inner_col_names = inner_table.get_column_names()
+    inner_formatters = inner_table.get_formatters()
+    outer_col_names = outer_table.get_column_names()
+
+    assert len(inner_col_names) - len(outer_col_names) \
+                    == len(inner_grouping) - len(outer_grouping)
+
+    key_count = len(outer_grouping)
+    if use_reduction: key_count -= 1 # Last level was removed by reduction
+
+    key_col_names = outer_col_names[:key_count]
+    # Indices of columns in the inner rowset matching the key columns of the outer one
+    inner_key_gather = [i[0] for i in enumerate(inner_col_names) if key_col_names.count(i[1])]
+
+    key_rows = {}
+    for (inner_row_idx, inner_row) in enumerate(inner_table):
+        key = tuple([inner_row[i] for i in inner_key_gather])
+        key_val = key_rows.get(key)
+        if key_val is None:
+            key_rows[key] = [inner_row_idx]
+        else:
+            key_val.append(inner_row_idx)
+
+    # Build dictionary with column name to column index mapping
+    outer_col_to_idx = dict([(i[1], i[0]) for i \
+                                in enumerate(outer_table.get_column_names())])
+
+    # Mapping for mapping inner column index to outer one (or None if outer is not present)
+    inner_col_idx_to_outer_col_idx = [outer_col_to_idx.get(i) for i \
+                                    in inner_table.get_column_names()]
+
+    # Apply some patching to the columns names
+    new_col_names = []
+    bb_inner_col_idx = None
+    for (col_idx, col_name) in enumerate(inner_col_names):
+        if col_name == "Basic Block":
+            col_name = "BB Start"
+            bb_inner_col_idx = col_idx
+        col_name = col_name.replace(":Hardware Event Count", "")
+        col_name = col_name.replace(":Hardware Event Sample Count", "")
+        new_col_names.append(col_name)
+    assert bb_inner_col_idx is not None, "BB column must be present"
+
+    new_table_data = []
+    for outer_row in outer_table:
+        outer_key = tuple(outer_row[:key_count]) # Outer key is a prefix
+        new_table_data.append([(outer_row[i] if i is not None else None) for i in inner_col_idx_to_outer_col_idx])
+        inner_rows = key_rows.get(outer_key)
+        assert inner_rows, "Inner table must have the outer key present"
+        for inner_row_idx in inner_rows:
+            inner_row = list(inner_table.get_row(inner_row_idx))
+            inner_row[0] = None # Keep parent key zero index column empty for inner rows
+            bb_value = inner_row[bb_inner_col_idx]
+            inner_row[bb_inner_col_idx] = hex(int(bb_value)) if bb_value is not None else '[Unknown]'
+            new_table_data.append(inner_row)
+
+    output_table = env.tables.user_table(new_col_names, new_table_data)
+    output_table.set_formatters(inner_formatters)
+
+def alternative_get_unknown_value():
+    return ""
+
+patched = list()
+for f in output_table.get_formatters():
+   f.get_unknown_value = alternative_get_unknown_value
+   patched.append(f)
+output_table.set_formatters(patched)
+
+grid.dump_table(output_table)
+
+# vim: set ft=python :

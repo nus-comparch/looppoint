@@ -1,0 +1,62 @@
+//*********************GRAPHS**********************************
+//graph_1,graph_2 are graph adjacency matrices, 
+//C_matrix is the matrix of local similarities  between vertices of graph_1 and graph_2. 
+//If graph_1 is NxN and graph_2 is MxM then C_matrix should be NxM
+//graph_1=test/m_a_1EWK s
+//graph_2=test/m_a_1U19 s
+//C_matrix=test/c s
+
+//*******************ALGORITHMS********************************
+//used algorithms and what should be used as initial solution in corresponding algorithms
+//algo=I U RANK QCV rand PATH s
+//algo_init_sol=unif unif unif unif unif unif s
+
+//algo=PATH s
+//algo=QCV s
+algo=RANK s
+algo_init_sol=unif s
+solution_file=solution_im.txt s
+
+//coeficient of linear combination between (1-alpha_ldh)*||graph_1-P*graph_2*P^T||^2_F +alpha_ldh*C_matrix 
+
+//alpha_ldh=0.2 d
+//alpha_ldh=0.8 d
+alpha_ldh=0.5 d
+cdesc_matrix=A c
+cscore_matrix=A c
+
+//**************PARAMETERS SECTION*****************************
+hungarian_max=10000 d
+algo_fw_xeps=0.01 d
+algo_fw_feps=0.01 d
+
+//0 - just add a set of isolated nodes to the smallest graph, 1 - double size 
+dummy_nodes=0 i
+
+// fill for dummy nodes (0.5 - these nodes will be connected with all other by edges of weight 0.5(min_weight+max_weight))
+dummy_nodes_fill=0 d
+
+// fill for linear matrix C, usually that's the minimum (dummy_nodes_c_coef=0),
+// but may be the maximum (dummy_nodes_c_coef=1)
+//dummy_nodes_c_coef=0.01 d
+dummy_nodes_c_coef=0 d
+
+qcvqcc_lambda_M=10 d
+qcvqcc_lambda_min=1e-5 d
+
+//0 - all matching are possible, 1-only matching with positive local similarity are possible
+blast_match=0 i
+blast_match_proj=0 i
+
+//****************OUTPUT***************************************
+//output file and its format 
+exp_out_file=graphm_exp_out.txt s
+exp_out_format=Parameters Compact Permutation s
+
+//other
+debugprint=0 i
+debugprint_file=graphm_debug.txt s
+
+//verbose file may be a file or just a screen:cout
+verbose_mode=0 i
+verbose_file=cout s

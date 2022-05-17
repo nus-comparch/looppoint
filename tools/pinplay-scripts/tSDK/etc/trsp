@@ -1,0 +1,1133 @@
+#!/usr/bin/perl -w
+#
+# INTEL CONFIDENTIAL
+#
+# TRSP script.
+#
+# For internal use only.
+#
+# Initial version of TRSP script was created to parse NPB3.3-OMP
+# traces with 5 threads (4 work thread, 1 service thread).
+#
+# In case of problems with script please
+# send mail to Oleg Ignatov (oleg.ignatov@intel.com)
+#
+# Current work:
+#
+# 1. Added cognitive graphic.
+#
+#
+
+use strict;
+use warnings;
+
+my @aExten = qw(SSE4.2 AVX FMA SMADD AVX3 AVX3.1);
+
+my $profileDepth = 10;
+my $coverageDepth = 5;
+my $flowDepth = 5;
+
+my $modeMT = 0;
+my $numServiceThread = 1;
+
+my $basePath = "./";
+my $profileFile = 'profile.csv';
+my $coverageFile = 'coverage.txt';
+my $pinlitFile = 'pinlit64.*.result';
+my $flowFile = 'flow.s';
+
+my $SLASH = '/';
+my $strTransfer = '';
+my $baseExtension;
+my @curFindedTrace = ( );
+my $strNoTail = '__';
+
+my %hByID = ( );
+my %hByInfo = ( );
+my %hByReg = ( );
+my @aIDs = ( );
+my $strictReg = '';
+my $strictMode = 0;
+my $graphMode = 0;
+
+#hashes for unique definition of region
+my %hashIDofISA = ( 'SSE' => '01',
+                    'AVX' => '02',
+                    'FMA' => '03',
+                    'SMADD' => '04' );
+               
+my %hashIDofNum = ( ''    => '00',
+                    '4.2' => '01',
+                    '3'   => '02',
+                    '3.1' => '03',
+                    '3.2' => '04' );
+
+my %hashIDofTail = ( '__'      => '00',
+                     'notvx'   => '01',
+                     'unroll0' => '02',
+                     'notvx.unroll0' => '03');
+
+my %hC = (  'default'      => "",
+            'bold'         => "\e[1m",
+            'black'        => "\e[30m",
+            'red'          => "\e[31m",
+            'green'         => "\e[32m",
+            'yellow'       => "\e[33m",
+            'blue'        => "\e[34m",
+            'majenta'      => "\e[35m",
+            'cyan'         => "\e[36m",
+            'white'        => "\e[37m",
+            'bold black'   => "\e[1;30m",
+            'bold red'     => "\e[1;31m",
+            'bold green'    => "\e[1;32m",
+            'bold yellow'  => "\e[1;33m",
+            'bold blue'   => "\e[1;34m",
+            'bold majenta' => "\e[1;35m",
+            'bold cyan'    => "\e[1;36m",
+            'bold white'   => "\e[1;37m");
+
+my %hBg = (  'default'      => "",
+            'black'        => "\e[40m",
+            'red'          => "\e[41m",
+            'green'         => "\e[42m",
+            'yellow'       => "\e[43m",
+            'blue'        => "\e[44m",
+            'majenta'      => "\e[45m",
+            'cyan'         => "\e[46m",
+            'white'        => "\e[47m");
+
+my $hEnd = "\e[0m";
+
+##############################################
+#                                            #
+#               Command line                 #
+#                                            #
+##############################################
+{
+    #command line
+    my $strCommandLine = '';
+    my $exitFlag = 0;
+    my $strictDef = 0;
+    my $helpFlag = 0;
+    my $onlyHelp = 1;
+    my $helpMessage = "\n\t\t\tTRSP\n\n        Script parses result files of traces " .
+                        "and displays obtained information  on terminal.\n    If " .
+                        "you have any questions about script please send mail " .
+                        "to Oleg Ignatov (oleg.ignatov\@intel.com).\n\n" .
+                        "\tCommands\n\n\t-help\t\tGet help.\n" .
+                        "\t-strict <REG>\tOutput information only about <REG> region.\n" .
+                        "\t\t\tWithout argument will used deafult R1 region.\n\n";
+    my $helpMessage2 = "TRSP: Not enough argument with '-strict' command. Will used default <R1> region.\n";
+    
+    while (@ARGV > 0) {
+        my $cmd = shift (@ARGV);
+        if ( $cmd eq '-help' ) {
+            if ( $helpFlag == 0 ) {
+                $helpFlag = 1;
+            } else { next; }
+        } elsif ( $cmd eq '-strict' ) {
+            $strictMode = 1;
+            $strictDef = 0;
+            $onlyHelp = 0;
+            if ( @ARGV > 0 ) {
+                $strictReg = shift(@ARGV);
+                if ( $strictReg eq '-help' ) {
+                    $helpFlag = 1;
+                    $strictDef = 1;
+                }
+            } else {
+                $strictDef = 1;
+            }
+        } else {
+            $strCommandLine .= "TRSP: ignore unknow command:\"$cmd\". Exit\n";
+            $exitFlag = 1;
+        }
+    }
+    
+    #output
+    if ( $helpFlag == 1 ) { print $helpMessage; }
+    if ( $onlyHelp == 1 && $helpFlag == 1 ) { $exitFlag = 1; }
+    if ( $strictDef == 1 ) {
+        $strictReg = 'R1';
+        print $helpMessage2, "\n";
+    }
+    if ( $strCommandLine ne '' ) { print $strCommandLine, "\n"; }
+    if ( $exitFlag == 1 ) { exit; }
+}
+
+############################################################
+# Subroutine return string of existing "region/extension"  #
+#                                                          #
+# 1. check "profile.csv"                                   #
+# 2. check "coverage.txt"                                  #
+# 3. check "flow.s"                                        #
+# 4. check "pinlit64.*.results" for find number of threads #
+#                                                          #
+############################################################
+
+sub checkRegion {
+    my ($proj, $trace, $compiler, $base, $regExpTail) = split ":", $_[0];
+    my $strReturn = '';
+    my $tempTail = '';
+
+    if ( $regExpTail eq '' ) {
+        last;
+    }
+
+    my $pinlitThreads;
+    my $subPath = '.';
+    my @workArray = split ",", $regExpTail;
+
+    foreach (@workArray) {
+
+        my ($reg, $extTail) = split "-=-", $_;
+        $extTail =~ m/^([\S]+)\(([\S]+)\)$/;
+        my $ext = $1;
+        my $tail = $2;
+        my $tailForPath = '';
+
+        if ( $tail eq $strNoTail ) { $tailForPath = ''; }
+        else { $tailForPath = ".$tail"; }
+
+        # 1
+        my $subFile = "$subPath$SLASH$profileFile";
+        next unless ( -s $subFile );
+        my $subPath2 = "$subPath$SLASH" . "rgn.$reg.$trace.$ext$tailForPath";
+        next unless ( -d $subPath2);
+
+        #2
+        $subFile = "$subPath2$SLASH$coverageFile";
+        next unless ( -s $subFile );
+
+        #3
+        $subFile = "$subPath2$SLASH$flowFile";
+        next unless ( -s $subFile );
+
+        #array for pinlit numbers
+        my @pinlitNumbers = ( );                                                                                                                                                                                                                                                        opendir PIND, $subPath2 || die "Cannot open $subPath2: $!";
+        foreach ( readdir PIND ) {
+            next if /^\./;
+            #print $_, "\n";
+            if ( m/^pinlit64\.([\d]+)\.result$/ ) {
+                push (@pinlitNumbers,$1);
+            }
+        }
+        closedir PIND;
+        if ( $#pinlitNumbers > 1 ) {
+            $modeMT = 1;
+            for (my $index = 0; $index <= $#pinlitNumbers; $index++) {
+                $pinlitNumbers[$index] = $index;
+            }
+        }
+        my $pinlitFileTemp = $pinlitFile;
+        $pinlitFileTemp =~ s/\*/$pinlitNumbers[0]/;
+        
+        #4
+        $subFile = "$subPath2$SLASH$pinlitFileTemp";
+        next unless ( -s $subFile );
+
+        open PINLIT, "< $subFile";
+        while ( <PINLIT> ) {
+            if ( m/^num_static_threads:\s(\d+)$/ ) {
+                $pinlitThreads = scalar $1;
+                last;
+            }
+        }
+        close PINLIT;
+        my $strPinlitTemp = '';
+        foreach ( @pinlitNumbers ) {
+            $strPinlitTemp .= "$_ ";
+        }
+        $strPinlitTemp = substr($strPinlitTemp, 0, -1);
+        
+        my $tempIDnum = '';
+        my $tempIDisa = '';
+        my $tempInfoID = '';
+        $ext =~ m/^([\D^.]+)([\D\d]*)?$/;
+        if ( defined $2 ) { $tempIDnum = $2; }
+        $tempIDisa = $1;
+        my $tempID = "$reg$hashIDofISA{$tempIDisa}$hashIDofNum{$tempIDnum}$hashIDofTail{$tail}$modeMT";
+        $tempInfoID = "$proj:$trace:$compiler:$base:$reg-=-$ext($tail)p$pinlitThreads<$strPinlitTemp>p";
+        
+        $hByID{$tempID} = $tempInfoID;
+        $hByInfo{"$reg$ext$tail$modeMT"} = $tempID;
+        push(@aIDs, $tempID);
+        
+        if ( $strictMode == 1 ) {
+            if ( $reg eq $strictReg ) {
+                $strReturn .= "$reg-=-$ext($tail)p$pinlitThreads<$strPinlitTemp>p,"
+            }
+        } else {
+            $strReturn .= "$reg-=-$ext($tail)p$pinlitThreads<$strPinlitTemp>p,"
+        }
+    }
+    if ( $strReturn ne '' ) {
+        $strReturn = "$proj:$trace:$compiler:$base:" . substr($strReturn, 0, -1);
+    }
+    $strReturn;
+}
+
+
+##############################################
+#                                            #
+#               Find regions                 #
+#                                            #
+##############################################
+{
+    my %hRegions = ( );
+    my @arrayExistExt = ( );
+    my $strOutput;
+
+    foreach (@aExten) {
+        my $curExten = $_;
+
+        opendir CURDIR, $basePath || die "Cannot open $basePath: $!";
+
+        foreach ( readdir CURDIR ) {
+            next if /^\./;
+            if ( m/^rgn\.([^.]+)\.([\S]+)\.$curExten(\.[\D][\S]*)?$/ ) {
+
+                 my $tempReg = $1;
+                 my $tempTrace = $2;
+                 my $tempTail = '';
+
+                if ( defined $3 ) {
+                    $tempTail = $3;
+                    $tempTail =~ s/^\.(.*)$/$1/;
+                }
+                if ( exists $hRegions{$tempTrace} ) { $hRegions{$tempTrace} .= " $tempReg<=>$curExten($tempTail)"; }
+                    else { $hRegions{$tempTrace} = "$tempReg<=>$curExten($tempTail)"; }
+            }
+        }
+        closedir CURDIR;
+    }
+
+    @curFindedTrace = ( );
+    #sort finding regions and extension, find base extension
+    foreach my $tempCurTrace ( sort keys %hRegions ) {
+        $strOutput = '';
+        my $curLine = $hRegions{$tempCurTrace};
+        my @curArray = split " ", $curLine;
+        my $curTrace = $tempCurTrace;
+        my %hSort = ( );
+        my $traceBaseExten = '';
+        
+        #some trace, array regions_extension
+        foreach (@curArray) {
+            my ($tempReg, $tempExt) = split "<=>", $_;
+            if ( exists $hSort{$tempReg} ) { $hSort{$tempReg} .= " $tempExt"; }
+            else { $hSort{$tempReg} = "$tempExt"; }
+        }
+        my $findedBaseExten = 0;
+        foreach my $tempRegion ( sort keys %hSort) {
+            my $tempExtenList = $hSort{$tempRegion};
+            my @findedExt = split " ", $tempExtenList;
+            my %hLocalHash = ( );
+            foreach (@findedExt) {
+                my $tempExtTail = $_;
+                $tempExtTail =~ m/^([\S]+)\(([\S]*)\)$/;
+                my $tempLocalExt = $1;
+                my $tempLocalTail = $strNoTail;
+                
+                if ( $2 ne '' ) { $tempLocalTail = $2; }
+                if ( exists $hLocalHash{$tempLocalExt} ) {
+                    $hLocalHash{$tempLocalExt} .= " $tempLocalTail";
+                } else {
+                    $hLocalHash{$tempLocalExt} = $tempLocalTail;
+                }
+            }
+            foreach my $hKey ( sort keys %hLocalHash ) {
+                my $hashLine = $hLocalHash{$hKey};
+                my @hashArray = split " ", $hashLine;
+                my @aShortTail = ( );
+                my @aLongTail = ( );
+                foreach (@hashArray) {
+                    if ( m/\./ ) { push (@aLongTail, $_); }
+                    else { push (@aShortTail, $_); }
+                }
+                @aLongTail = sort @aLongTail;
+                @aShortTail = sort @aShortTail;
+                @hashArray = ( );
+                foreach (@aShortTail) { push (@hashArray, $_); }
+                    foreach (@aLongTail) { push (@hashArray, $_); }
+
+                #save into hLocalHash{hKey}
+                $hLocalHash{$hKey} = join(" ", @hashArray);
+            }
+            foreach (@aExten) {
+            my $curTempExt = $_;
+                foreach my $tempLocalExt ( keys %hLocalHash ) {
+                    if ( $curTempExt eq $tempLocalExt ) {
+                        if ( $findedBaseExten == 0 ) {
+                            $traceBaseExten = $curTempExt;
+                            $findedBaseExten = 1;
+                        }
+                        my @hashArray = split " ", $hLocalHash{$curTempExt};
+                        foreach (@hashArray) {
+                            $strOutput .= "$tempRegion-=-$curTempExt($_),";
+                        }
+                    }
+                }
+            }
+        }
+        $strOutput = substr($strOutput, 0, -1);
+        $strOutput = "$curTrace:$traceBaseExten:$strOutput";
+        push (@curFindedTrace, $strOutput);
+    }
+
+    #check string for exit
+    unless ( @curFindedTrace ) {
+        print "Not found trace files in current directory: \"$basePath\".\n";
+        exit;
+    }
+    
+    #save "transfer string"
+    foreach (@curFindedTrace) {
+        my ( $tempTrace, $tempBaseExt, $tempRegions) = split ":", $_;
+        $strTransfer .= "MY_PROJECT:$tempTrace:COMPILER:$tempBaseExt:$tempRegions\n";
+    }
+}
+
+
+
+##############################################
+#                                            #
+#                   Check                    #
+#                                            #
+##############################################
+{
+    my @checkArray = split "\n", $strTransfer;
+    $strTransfer = '';
+    foreach (@checkArray) {
+        my $tempReturn = &checkRegion($_);
+        if ( $tempReturn eq '' ) { next; }
+        else { $strTransfer .= $tempReturn . "\n"; }
+    }
+    #check string to exit
+    if ( $strTransfer eq '' ) {
+        if ( $strictMode == 0 ) { print "TRSP: Cannot find correct trace files in work directory \"$basePath\".\n"; }
+        else { print "TRSP: Cannot find correct trace for <$strictReg> region in work directory \"$basePath\".\n"; }
+        exit;
+    }
+    chomp($strTransfer);
+}
+
+
+
+##############################################
+#                                            #
+#                Main program                #
+#                                            #
+##############################################
+
+
+
+my $strBasePath = '';
+my @aCalcTemp = ( );
+my @aCalcInsc;
+my @arrayTraces = split "\n", $strTransfer;
+my @aPinlitNumbers;
+
+foreach (@arrayTraces) {
+#print $_,"\n";
+    my ($codeName, $traceName, $compilerVer, $baseExt, $regExpTail) = split ":", $_;
+    my $numThreads;
+    my $listOfThreads;
+    $baseExtension = $baseExt;
+    my @aRegExtTail = split ",", $regExpTail;
+    my $flagOutReg = 1;
+    my $oldOutReg = '';
+    my @aExten2 = ( );
+    my $strLocalTransfer = '';
+    my @aExtenTail2;
+    @aPinlitNumbers = ( );
+    my $tempStrForHash = '';
+
+    #convert input "transfer string" in normal format
+    foreach (@aRegExtTail) {
+        my ($curReg, $curExtTail) = split "-=-", $_;
+        
+        if ( $curExtTail =~ m/^([\D\d]+)p([\d]+)<([\D\d]+)>p$/ ) {
+            $curExtTail = $1;
+            $numThreads = $2;
+            $listOfThreads = $3;
+
+            if ( $numThreads > 1 ) {
+                $modeMT = 1;
+            }
+        }
+
+        if ($flagOutReg == 1) {
+            $oldOutReg = $curReg;
+            push (@aExten2, $curExtTail);
+            if ($numThreads > 1 ) {
+                $modeMT = 1;
+            }
+                push (@aPinlitNumbers, "<$numThreads:$listOfThreads>");
+            $flagOutReg = 0;
+            next;
+        }
+
+    if ( $oldOutReg eq $curReg ) {
+        push (@aExten2, $curExtTail);
+        push (@aPinlitNumbers, "<$numThreads:$listOfThreads>");    
+        next;
+
+    } else {
+        #save
+        $strLocalTransfer .= "$oldOutReg=>";
+        $tempStrForHash = '';
+        for (my $index = 0; $index <= $#aExten2; $index++) {
+            $tempStrForHash .= "$aExten2[$index]$aPinlitNumbers[$index],";            
+        }
+        $tempStrForHash = substr($tempStrForHash, 0, -1);
+        $hByReg{$oldOutReg} = $tempStrForHash;
+
+        $tempStrForHash .= ";";
+        $strLocalTransfer .= $tempStrForHash;
+
+            @aPinlitNumbers = ( );
+            #recovery new region
+            $flagOutReg = 1;
+            $oldOutReg = $curReg;
+            @aExten2 = ( );
+            redo;
+        }
+    }
+
+    $strLocalTransfer .= "$oldOutReg=>";
+    $tempStrForHash = '';
+    for (my $index = 0; $index <= $#aExten2; $index++) {
+        $tempStrForHash .= "$aExten2[$index]$aPinlitNumbers[$index],";
+    }
+    $tempStrForHash = substr($tempStrForHash, 0, -1);
+    $hByReg{$oldOutReg} = $tempStrForHash;
+    $strLocalTransfer .= $tempStrForHash;
+
+
+    print "#" x 44, "\n", "#" , " " x 42, "#\n#", " " x 3, sprintf("%-39s", "$codeName $traceName") , "#\n#" , " " x 42, "#\n", "#" x 44, "\n\n";
+
+    #################################################
+    ###    getting information about profile    #####
+    #################################################
+
+    $strBasePath = '.';
+
+    my $profileType = 0;
+    my $firstStep = 1;
+
+    open ( DPROF, "< $strBasePath$SLASH$profileFile");
+
+    my $numTemp = $profileDepth;
+    while ( <DPROF> ) {
+        if ( $firstStep == 1 ) {
+            #define profile.csv type
+            if ( m/^[^,]+,\"[^"]+\",[^,]+,[^,]+,[^,]+,[^,]+,[^,]+,[^,]+,[^,]+,[^,]/ ) {
+                $profileType = 1;
+                print " cycles   instrs    cpi     PF", " " x 7, "name\n\n";
+            } elsif ( ( m/^[^,]+,\"[^"]+\",[^,]+,[^,]+,[^,]+,[^,]+,[^,]+,[^,]+,[^,]+/ ) ) {
+                $profileType = 2;
+                print " cycles   instrs    PF", " " x 7, "name\n\n";
+            } else {
+                print " instrs  PF", " " x 6, "name\n\n";
+            }
+            $firstStep = 0;
+        } else {
+            if ( ($numTemp >= 0) && ($numTemp != $profileDepth) ) {
+                if ( $profileType == 1 ) {
+                    m/^([^,]+),\"([^"]+)\",[^,]+,([^,]+),[^,]+,[^,]+,[^,]+,[^,]+,([^,]+),([^,]+),/;
+                    printf("%5.1f%%  %7.2f%% %6.2f  %6.2f   %-23s \n", scalar $1, scalar $3, scalar $4, scalar $5, $2);
+                } elsif ( $profileType == 2 ) {
+                    m/^([^,]+),\"([^"]+)\",([^,]+),/;
+                    if ( $3 == 0 ) {
+                         printf("%5.1f%%  %7.2f%%    N/A    %-23s \n", scalar $1, scalar $3, $2);
+                    } else {
+                        printf("%5.1f%%  %7.2f%%  %6.2f   %-23s \n", scalar $1, scalar $3, scalar $1 / scalar $3, $2);
+                    }
+                } else {
+                    m/^([^,]+),([^,]+),([^,]+),/;
+                    printf("%5.1f%% %5.1f    %-23s\n", scalar $1, scalar $3, $2);
+                }
+            } else {
+                #do something for the future
+                last;
+            }
+        }
+        $numTemp--;
+    }
+
+    close DPROF;
+
+    #################################################
+    ###        getting other information        #####
+    #################################################
+    
+    my $strTemp = '';
+    my %hWeight;
+    my @aRegMas = ( );
+    my @aExtMas = ( );
+    my @aTailMas = ( );
+    my $traceTail;
+    my @aString = split ";", $strLocalTransfer;
+    my $singleThread;
+
+    foreach (@aString) {
+        my ($region, $strExtenTail2) = split "=>", $_;
+        @aExtenTail2 = split ",",$strExtenTail2;
+        my @aExten2 = ( );
+        my %hNumThreads = ( );
+        my %hFullThreads = ( );
+
+        @aTailMas = ( );
+    
+        foreach (@aExtenTail2) {
+            m/^([\S]+)\(([\S]+)\)<([\d]+)\:([\d\D]+)>$/;
+            push (@aExten2, $1);
+            if ( $2 eq $strNoTail) {
+                push (@aTailMas, ' --- ');
+                $hNumThreads{$1}{' --- '} = $3;
+                $hFullThreads{$1}{' --- '} = $4;
+            }
+            else {
+                push (@aTailMas, $2);
+                $hNumThreads{$1}{$2} = $3;
+                $hFullThreads{$1}{$2} = $4;
+            }
+            $_ = "$1($2)";
+        }
+
+        @aExtMas = @aExten2;
+        push (@aRegMas, $region);
+        print "\n\n", "=" x 44, "\n", "=" x 5, " " x 3, sprintf("%-31s","$traceName Region $region"), "=" x 5, "\n", "=" x 44, "\n";
+    
+        my @aTemp = @aExten2;
+        my @aTmpTail = @aTailMas;
+        my $strTemp1 = '';
+        my $strTemp3 = '';
+        my $strTemp4 = '';
+        my $strTempInscount = '';
+        my @aInscountMain = ( );
+        my $mainThread = $aPinlitNumbers[0];
+        @aCalcInsc = ( );
+        my %hGlobInsc = ( );
+        my $countForTail = 0;
+        my %hFlowRdn;
+
+        #cycle for each extension (AVX, FMA, etc.)
+        foreach (@aTemp) {
+            my $strExtenTemp = $_;
+            print "\n$strExtenTemp ";
+            if ( $aTmpTail[$countForTail] ne ' --- ' ) { print "$aTmpTail[$countForTail]"; }
+            print "\n\n";
+
+            #################################################
+            ###     getting information from Coverage   #####
+            #################################################
+
+            if ($aTmpTail[$countForTail] eq ' --- ') { $traceTail = ''; }
+            else { $traceTail = ".$aTmpTail[$countForTail]"; }
+            $strTemp = "$strBasePath$SLASH". "rgn.$region.$traceName.$strExtenTemp$traceTail";
+
+            #open Coverage file for current extension and region
+            open ( FCOVER, "< $strTemp$SLASH$coverageFile") || die "File $strTemp$SLASH$coverageFile not exist!\n";
+
+            my $numCoveTemp = $coverageDepth;
+            $strTemp1 .= sprintf(" %6s %14s", $strExtenTemp, $aTmpTail[$countForTail]);
+            my %hExtenTemp;
+            print "-" x 44, "\n    %", " " x 7;
+            if ( $strExtenTemp ne $baseExtension ) { print "rdn", " " x 6; }
+            print "name\n\n";
+
+            my $flagReduce = 0;
+
+            while ( <FCOVER> ) {
+                if ( $numCoveTemp > 0 ) {            
+                    #getting information about functions
+                    if ($_ eq "\n") {
+                        $numCoveTemp = 0;
+                    } else {
+                        m/^[\S]+\s([\S]+)\s\[([\S]+)\]\s([\S]+)\s([\d]+)\s([\S]+)?/;
+                        if ( defined $5 && $strExtenTemp ne $baseExtension ) { printf("%8s  %6s  %-28s\n", $2, $5, $3); }
+                        else {
+                            printf("%8s  ", $2);
+                            if ( $strExtenTemp ne $baseExtension ) { print "   -    "; }
+                            printf("%-28s\n", $3);
+                        }
+                        $hExtenTemp{$1}{$3} = scalar $4;
+                    }
+                } else {
+                    if ( m/^[\S]+\s([\S]+)\s\[([\S]+)\]\s([\S]+)\s([\d]+)\s/ ) {
+                        $hExtenTemp{$1}{$3} = scalar $4;
+                    }
+                    #getting information about Total, Reduced, Quality
+                    if ( m/^Total:\s([\S]+)\n/ ) {
+                        $strTemp1 .= sprintf(" %11d", scalar $1);
+                        push (@aCalcTemp, $1);
+                    }
+                    if ( m/^Reduced:\s([\S]+)%\n/ ) {
+                        $strTemp1 .= sprintf (" %8.2f%%", scalar $1);
+                        $hWeight{$aExtenTail2[$countForTail]}{$region} .= scalar $1;
+                        $flagReduce = 1;
+                    }
+                    if ( m/^Quality:\s([\S]+)%\n/ ) {
+                        if ( $flagReduce == 0 ) {
+                            if ( $strExtenTemp eq $baseExtension ) {
+                                $strTemp1  .= "      -   ";
+                            }
+                            $hWeight{$aExtenTail2[$countForTail]}{$region} .= scalar $1;
+                        }
+                        $strTemp1 .= sprintf (" %8.2f%%", scalar $1);
+                    }
+                    if ( m/^DP\sGFLOP:\s([\S]+)\n/ ) { $strTemp4 = sprintf ("  %9.4f  *",$1); }
+                    if ( m/^SP\sGFLOP:\s([\S]+)\n/ ) { $strTemp1 .= sprintf (" %9.4f", $1) . $strTemp4; }
+                }
+                $numCoveTemp--;
+            }
+            close FCOVER;
+            $strTemp1 .= "\n";
+
+            #################################################
+            ###    getting information about inscount   #####
+            #################################################
+
+            #open pinlit64.*.result
+            my $tidTemp = 0;
+            my $flagTemp = 0;
+            my @aInsTemp = ( );
+            my $strFlowProfile = '';
+            my @aSysCallTemp = ( );
+
+            while ( $tidTemp < $numThreads) {
+
+                my $strPinlitTemp = $pinlitFile;
+                if ( $hNumThreads{$strExtenTemp}{$aTmpTail[$countForTail]} == 1 ) {
+                    
+                    $strPinlitTemp =~ s/\*/$hFullThreads{$strExtenTemp}{$aTmpTail[$countForTail]}/;
+                } else { $strPinlitTemp =~ s/\*/$tidTemp/; }
+
+                    open ( FPINLIT, "< $strTemp$SLASH$strPinlitTemp");
+                    while ( <FPINLIT> ) {
+                        #do something
+                        if ( $tidTemp == 0 && $flagTemp == 0) {
+                            if ( m/\s[\S]+:tid([\d]+)[\s:]?/ ) {
+                                $strFlowProfile = "\nMain thread: tid$1\n\n    %     p_coef";
+                                if ( $strExtenTemp ne $baseExtension ) { $strFlowProfile .= "   rdn  "; }
+                                $strFlowProfile .= "   name\n\n";
+
+                                $strTempInscount = "*" x 36 . "\n" . "TID   inscount   s_call      %     *";
+                                push (@aInscountMain, scalar $1);
+                                $mainThread = scalar $1;
+                                $flagTemp = 1;
+                            }
+                        } else {
+                            if ( m/^inscount:\s([\S]+)\n/ ) {
+                                push (@aInsTemp, $1);
+                            }
+                            #getting information about "num_syscalls"
+                            if ( m/^num_syscalls:\s([\S]+)\n/ ) {
+                                push (@aSysCallTemp, $1);
+                                last;
+                            }
+                        }
+                    }
+
+                    close FPINLIT;
+
+                    $tidTemp++;
+            }
+            #calc percents of insounts
+            if ( $numThreads == 1 ) {
+                #single case
+                $strTempInscount .= sprintf ("\n%2d %11d %6d     single   *", $hFullThreads{$strExtenTemp}{$aTmpTail[$countForTail]}, $aInsTemp[0], $aSysCallTemp[0]);
+                push (@aCalcInsc, scalar $aInsTemp[0]);
+                $hGlobInsc{$strExtenTemp}{$aTmpTail[$countForTail]} = $aInsTemp[0];
+            } else {
+                #modeMT
+                my $warnMessage = '   !!! Won\'t run on simulator in MT mode !!!';
+                for (my $i = 0; $i<$numThreads; $i++) {
+                    if ( $i == $numServiceThread ) {
+                        #thread N=1
+                        $strTempInscount .= sprintf ("\n%2d %11d %6d     service  *", $i, $aInsTemp[$i], $aSysCallTemp[$i]);
+                    } elsif ($i == $mainThread) {
+                        #main thread
+                        $strTempInscount .= sprintf ("\n%2d %11d %6d      main    *", $i, $aInsTemp[$i], $aSysCallTemp[$i]);
+                        push (@aCalcInsc, scalar $aInsTemp[$i]);
+                        $hGlobInsc{$strExtenTemp}{$aTmpTail[$countForTail]} = $aInsTemp[$i];                      
+                    } else {
+                        #other threads
+                        $strTempInscount .= sprintf ("\n%2d %11d %6d ", $i, $aInsTemp[$i], $aSysCallTemp[$i]);
+                        my $deltaTemp;                        
+                        $deltaTemp = $aInsTemp[$i] * 100 / $aInsTemp[$mainThread];
+                        if ( $deltaTemp == 0 ) {
+                            $strTempInscount .= "  off" . " " x 7 . "*";
+                        } elsif ( $deltaTemp > 100 ) {
+                            $deltaTemp = $deltaTemp - 100;
+                            $strTempInscount .= sprintf ("   +%6.2f%%  *", scalar $deltaTemp);
+                        } else {
+                            $deltaTemp = 100 - $deltaTemp;
+                            $strTempInscount .= sprintf ("   -%6.2f%%  *", scalar $deltaTemp);
+                        }
+                        $strTempInscount .= $warnMessage if $aSysCallTemp[$i] > 0;
+                    }                    
+                }
+            }
+            $strTempInscount .= "\n" . "*" x 36 . "\n";
+
+            #################################################
+            ###    getting information from "flow.s"    #####
+            #################################################
+
+            open ( DFLOW, "< $strTemp$SLASH$flowFile" );
+
+            my $numFlowTemp = $flowDepth;
+            my $flFlag = 0;
+            while ( <DFLOW> ) {
+                if ( $flFlag == 0 ) {
+                #getting information from flow.s about profile
+                    if ($_ eq "\n") {
+                        $numFlowTemp = 0;
+                         $flFlag = 1;
+                    } elsif ( m/^[\S]+\s([\S]+)\s\[([\S]+)\]\s([\S]+)\s([\d]+)\s/ ) {
+                        unless ( exists $hExtenTemp{$1}{$3} ) { 
+                            $hExtenTemp{$1}{$3} = scalar $4;
+                        }
+                        #calculation coefficient of "ins_coverage / ins_flow"
+                        my $coefTempFirst;
+                        if ( defined $hExtenTemp{$1}{$3} ) {
+                            $coefTempFirst = $hExtenTemp{$1}{$3} / scalar $4;
+                        }
+                        if ( $strExtenTemp eq $baseExtension ) { 
+                            $hFlowRdn{$3} = scalar $4;
+                            if ( $numFlowTemp > 0 ) {
+                                $strFlowProfile .= sprintf("%8s  %5.2f   %-28s\n", $2, $coefTempFirst, $3);
+                            }
+                        } else {
+                            if ( $numFlowTemp > 0 ) {
+                                if ( exists $hFlowRdn{$3} ) { $strFlowProfile .= sprintf("%8s  %5.2f   %2.3f   %-28s\n", $2, $coefTempFirst, scalar $4 / $hFlowRdn{$3}, $3); }
+                                else { $strFlowProfile .= sprintf("%8s  %5.2f   %6s   %-28s\n", $2, $coefTempFirst, '  -   ', $3); }
+                            }    
+                        }
+                        $numFlowTemp--;
+                    }
+                }
+                if ( m/;\*\*\* Loop with highest weight/ ) {
+                    if ( m/;\sn=~?([\d]+)\[([^,]+)\],\stc=~?([^,]+),\sipi=~?([^,]+),\sfirst/ ) {
+                        $strTemp3 .= sprintf(" %6s %14s %9d %11s %11.2f %11.2f  *\n", $strExtenTemp, $aTmpTail[$countForTail], scalar $1, $2, scalar $3, scalar $4);
+                    }
+                }
+            }
+
+            close DFLOW;
+
+            $countForTail++;
+            print $strFlowProfile, "\n", $strTempInscount, "\n", "-" x 44, "\n";
+        }
+
+        #output information about "inscout" of main threads
+        my $strTemp2 = '';
+        my @aTemp2 = @aCalcInsc;
+        @aTemp = @aExten2;
+        print "\n\n", "=" x 78, "\n";
+        printf("=== Summary. %-30s\n\n", "$traceName $region");
+        print "*" x 65, "\n", " " x 19 , "Variant   Inscount      Coef1        Coef2   *\n";
+
+        my $coefTempCount = 0;
+        my %hBaseInsc1 = ( );
+        my %hBaseInsc2 = ( );
+        my %hBaseInscChar2 = ( );
+        my %hBaseChar = ( );
+        my $tempChar = 'a';
+        my $bFlag = 1;
+        my $bOldExt = '';
+        while ($coefTempCount < $#aExtMas + 1) {
+            my $currentExt = $aExtMas[$coefTempCount];
+            my $currentTail = $aTailMas[$coefTempCount];    
+            $hBaseChar{$currentExt}{$currentTail} = $tempChar;
+            if ( $currentExt eq $baseExt ) {
+                $hBaseInsc1{$currentTail} = $hGlobInsc{$currentExt}{$currentTail};
+            }    
+            if ( $bFlag == 1 ) {
+                $hBaseInsc2{$currentExt} = $hGlobInsc{$currentExt}{$currentTail};
+                $hBaseInscChar2{$currentExt} = $tempChar;
+                $bOldExt = $currentExt;
+            } else {
+                if ( $currentExt ne $bOldExt ) {
+                    $hBaseInsc2{$currentExt} = $hGlobInsc{$currentExt}{$currentTail};
+                    $hBaseInscChar2{$currentExt} = $tempChar;
+                    $bOldExt = $currentExt;
+                }
+            }
+            $tempChar++;
+            $bFlag = 0;    
+            $coefTempCount++;
+        }
+
+        $coefTempCount = 0;
+        while ($coefTempCount < $#aExtMas + 1) {
+            my $currentExt = $aExtMas[$coefTempCount];
+            my $currentTail = $aTailMas[$coefTempCount];
+
+            printf(" (%1s) %6s %14s %10d", $hBaseChar{$currentExt}{$currentTail}, $currentExt, $currentTail, $hGlobInsc{$currentExt}{$currentTail} );
+
+            if ( exists $hBaseInsc1{$currentTail} ) {
+                printf("   %5.3f %1s/%1s  ", scalar $hBaseInsc1{$currentTail} / scalar $hGlobInsc{$currentExt}{$currentTail}, $hBaseChar{$baseExt}{$currentTail}, $hBaseChar{$currentExt}{$currentTail} );
+            } elsif ( $currentTail =~ m/^[^.]+$/ ) {
+                print("       ---    ");
+            } else {
+                $currentTail =~ m/\.([^.]+)$/;
+                if ( exists $hBaseInsc1{$1} ) {
+                    printf("   %5.3f %1s/%1s  ", scalar $hGlobInsc{$currentExt}{$1} / scalar $hGlobInsc{$currentExt}{$currentTail}, $hBaseChar{$currentExt}{$1}, $hBaseChar{$currentExt}{$currentTail} );
+                } else {
+                    print("       ---    ");
+                }
+            }            
+            if ( $currentTail =~ m/^[^.]+$/ ) {
+                printf("  %5.3f %1s/%1s  *\n", scalar $hBaseInsc2{$currentExt} / scalar $hGlobInsc{$currentExt}{$currentTail}, $hBaseInscChar2{$currentExt}, $hBaseChar{$currentExt}{$currentTail} );
+            } elsif ( $currentTail =~ m/^([^.]+)\./ ) {
+                if ( exists $hGlobInsc{$currentExt}{$1} ) {
+                    printf("  %5.3f %1s/%1s  *\n", scalar $hGlobInsc{$currentExt}{$1} / scalar $hGlobInsc{$currentExt}{$currentTail}, $hBaseChar{$currentExt}{$1}, $hBaseChar{$currentExt}{$currentTail} );
+                } else {
+                    print("       ---    ");
+                }
+            }
+            $coefTempCount++;
+        }
+        
+        print $strTemp2, "*" x 65, "\n\n";
+        #output informations from "flow.s"
+        print "*" x 71, "\n", " " x 15, "Variant", " " x 6, " n", " " x 11, "%", " " x 11, "tc", " " x 9, "ipi   *\n", $strTemp3, "*" x 71, "\n";                
+        #output information about extentions in current region
+        print "\n", "*" x 78, "\n", " " x 15, "Variant      Total    Reduced   Quality   SP_GFLOP   DP_GFLOP *\n", $strTemp1, "*" x 78, "\n";
+        print "\n\n", "=" x 78, "\n\n";
+
+    #add bar graph
+    if ( -t STDOUT ) { $graphMode = 1; } else { $graphMode = 0; }
+    
+    if ( $graphMode == 1 && $#aCalcTemp >=1 ) {
+        my $rangeY = 20;
+        my $eRangeY = 2;
+        my $chunk = 8;
+        my $maxElem = $aCalcTemp[0];
+        
+        my @aGraph = ( );
+        my $strBound = '';
+        
+        #init graph
+        for ( my $i = 0; $i < ($rangeY + $eRangeY); $i++) {
+            for (my $j = 0; $j < ($#aCalcTemp+1)*$chunk; $j++) {
+                $aGraph[$i][$j] = ' ';
+            }
+        }
+        
+        #find MAX element
+        foreach (@aCalcTemp) { if ( $_ > $maxElem ) { $maxElem = $_; } }
+        
+        #calculate parametrs
+        my @aInscRangeY = ( );
+        my @aInscStrongRangeY  = ( );
+        my @aPercents = ( );
+        my @aMsgPercents = ( );
+        my @aBarColor = ( );
+        my $baseForPercents = $aCalcTemp[0];
+        my $inscBefore = 0;
+        for (my $i = 0; $i <= $#aCalcTemp; $i++) {
+            if ( $i == 0 ) {
+                $aPercents[0] = 0;
+                $aMsgPercents[0] = ' BASE';
+                $aBarColor[0] = 'white';
+            } elsif ( $i == 1 ) {
+                #define behavior
+                $aPercents[1] = 100 - 100*$aCalcTemp[1]/$baseForPercents;
+                if ( $aPercents[1] > 0 ) {
+                    $aMsgPercents[1] = sprintf("-%.1f%%", $aPercents[1]);
+                    $aBarColor[1] = 'green';
+                } elsif ( $aPercents[1] == 0 ) {
+                    $aMsgPercents[1] = sprintf("%.1f%%", $aPercents[1]);
+                    $aBarColor[1] = 'white';
+                } else {
+                    $aMsgPercents[1] = sprintf("+%.1f%%", -$aPercents[1]);
+                    $aBarColor[1] = 'red';
+                }
+                $inscBefore = $aCalcTemp[1];
+            } else {
+                #other cases
+                $aPercents[$i] = 100 - 100*$aCalcTemp[$i]/$baseForPercents;
+                if ( $aPercents[$i] < 0 ) {
+                    $aMsgPercents[$i] = sprintf("+%.1f%%", -$aPercents[$i]);
+                    $aBarColor[$i] = 'red';
+                } elsif ( $aPercents[$i] == 0 ) {
+                    $aMsgPercents[$i] = sprintf("%.1f%%", $aPercents[$i]);
+                    $aBarColor[$i] = 'white';
+                } else {
+                    $aMsgPercents[$i] = sprintf("-%.1f%%", $aPercents[$i]);
+                    if ( $aCalcTemp[$i] >= $inscBefore ) { $aBarColor[$i] = 'blue'; }
+                    else { $aBarColor[$i] = 'green'; }
+                }
+                $inscBefore = $aCalcTemp[$i];
+            }
+            
+            $aInscRangeY[$i] = $rangeY * $aCalcTemp[$i] / $maxElem;
+            my $tempValue = sprintf("%.0f", $aInscRangeY[$i]);
+            if ( ($aInscRangeY[$i] - $tempValue) < 0.5 ) { $aInscStrongRangeY[$i] = $tempValue; }
+            else { $aInscStrongRangeY[$i] = $tempValue + 1; }
+        }
+
+        #fill bar graph
+        for (my $i = 0; $i <= $#aCalcTemp; $i++) {
+
+            my $curMsg = $aMsgPercents[$i];
+            my $shift = 0;
+
+            while ( $curMsg ne '' ) {
+                my $symbol = substr($curMsg,0,1);
+                $curMsg = substr($curMsg,1);
+
+                $aGraph[$aInscStrongRangeY[$i]+$eRangeY-1][$i*$chunk+1+$shift] = $symbol;
+                $shift++;
+
+            }
+            #fill rectangle
+            for (my $j = $aInscStrongRangeY[$i]-1; $j >= 0; $j--) {
+                for (my $m = 0; $m < 4; $m++) {
+                    $aGraph[$j][$i*$chunk+2+$m] = "$hBg{$aBarColor[$i]} $hEnd";
+                }
+            }
+        }
+        
+        print "MAX|";
+        for (my $i = $rangeY+$eRangeY-1; $i>=0; $i--) {
+            if ( $i != $rangeY+$eRangeY-1 ) { print "   |"; }
+            for (my $j = 0; $j <= ($#aCalcTemp+1)*$chunk-1; $j++) {
+                print $aGraph[$i][$j];
+            }
+            print "\n";
+        }
+        $strBound = ' 0 |';
+        #init bound
+        for (my $i = 0; $i < ($#aCalcTemp+1)*$chunk-1; $i++) { $strBound .= '-'; }
+        $strBound .= "--\n   |  ";        
+        for (my $i = 0; $i <= $#aCalcTemp; $i++) { $strBound .= sprintf("%-${chunk}s", $aExtMas[$i]); }
+        $strBound .= "\n   |";
+        for (my $i = 0; $i <= $#aCalcTemp; $i++) {
+            if ( $aTailMas[$i] eq ' --- ' ) { $strBound .= ' ' x $chunk; }
+            else { $strBound .= sprintf("%${chunk}s", $aTailMas[$i]); }
+        }
+        $strBound .= "\n";
+        print $strBound;
+    }
+    #end block of program of bar graph
+    
+    #add simple graph
+    if ( $#aCalcTemp >= 1 ) {
+        my $rangeY = 20;
+        my $chunk = 10;
+        my $maxElem = $aCalcTemp[0];
+        my @aGraph = ( );
+        my $strBound = '';
+
+        #init graph
+        for (my $i = 0; $i <= $rangeY; $i++) {
+            for (my $j = 0; $j <= $#aCalcTemp*$chunk; $j++) {
+                    $aGraph[$i][$j] = ' ';                
+            }
+        }
+        
+        #find MAX element
+        foreach (@aCalcTemp) { if ( $_ > $maxElem ) { $maxElem = $_; } }
+        
+        for (my $idX = 0; $idX < $#aCalcTemp; $idX++) {
+            my $currValue = ($rangeY * $aCalcTemp[$idX] / $maxElem);
+            my $nextValue = ($rangeY * $aCalcTemp[$idX+1] / $maxElem);
+            my $deltaY = ($currValue - $nextValue) / $chunk;
+            my $tempValue = $currValue;
+            my $tmpVal = sprintf("%.0f", $tempValue);
+            if ( ($tempValue - $tmpVal) < 0.5 ) {
+                $aGraph[$tmpVal][$idX*$chunk] = '*';
+            } else {
+                $aGraph[$tmpVal+1][$idX*$chunk] = '*';            
+            }
+
+            for (my $ii = 0; $ii < $chunk; $ii++) {
+                $tempValue -= $deltaY;
+                my $tempValue2 = sprintf("%.0f", $tempValue);
+                if ( ($tempValue - $tempValue2) < 0.5 ) {
+                    $aGraph[$tempValue2][$idX*$chunk+$ii] = '*';
+                } else {
+                    $aGraph[$tempValue2+1][$idX*$chunk+$ii] = '*';
+                }
+            }
+        }
+
+        for (my $idX = 0; $idX <= $#aCalcTemp; $idX++) {
+            my $currValue = ($rangeY * $aCalcTemp[$idX]) / $maxElem;
+            $currValue = sprintf("%.0f", $currValue);
+            my $tempCurrValue = sprintf("%.0f", $currValue);
+            if ( ($currValue - $tempCurrValue) < 0.5 ) {
+                $aGraph[$tempCurrValue][$idX*$chunk] = 'O';
+            } else {
+                $aGraph[$tempCurrValue+1][$idX*$chunk] = 'O';
+            }
+        }
+
+        #init X axis
+        $strBound = '   |   ';
+        for (my $idX = 0; $idX <= $#aCalcTemp; $idX++) {
+            $strBound .= "|" . ' ' x (${chunk}-1);
+        }
+        $strBound .= "\n 0 |";
+        for (my $ii = 0; $ii <= ($#aCalcTemp+1)*$chunk; $ii++) {  $strBound .= "_"; }
+        $strBound .= "\n   |    ";
+        for (my $ii = 0; $ii <= $#aCalcTemp; $ii++) { $strBound .= sprintf("%-${chunk}s", $aExtMas[$ii]); }
+        $strBound .= "\n   |";
+        for (my $ii = 0; $ii <= $#aCalcTemp; $ii++) {
+            if ( $aTailMas[$ii] eq ' --- ' ) { $strBound .= ' ' x $chunk; }
+            else { $strBound .= sprintf("%${chunk}s", $aTailMas[$ii]); }
+        }
+        $strBound .= "\n";
+
+        #output graph
+        print "Insc Graph (beta)\nMAX|\n";
+        
+        for (my $i = $rangeY; $i >= 0; $i--) {
+            print '   |   ';
+            for (my $idX = 0; $idX <= $#aCalcTemp*$chunk; $idX++) {
+                print$aGraph[$i][$idX];
+            }
+            print "\n";
+        }
+        
+        print $strBound, "\n";
+        
+    }
+    @aCalcTemp = ( );
+}
+
+    if ($strictMode == 0) {
+        #add information about weight
+        my $strWeight = ' ' x 14 . 'Variant';
+        foreach (@aRegMas) {
+            $strWeight .= sprintf(" %8s ", $_);
+        }
+        $strWeight .= "   *\n";
+        my $countForWeight = 0;
+        foreach (@aExtenTail2) {
+            my $curExtTail = $_;
+            my $extension = $aExtMas[$countForWeight];
+            $strWeight .= sprintf(" %6s %14s", $extension, $aTailMas[$countForWeight]);
+            my $sumWeight = 0;
+            foreach (@aRegMas) {
+                $sumWeight += scalar $hWeight{$curExtTail}{$_};
+            }
+            foreach (@aRegMas) {
+                my $tempWeight = scalar $hWeight{$curExtTail}{$_} / scalar $sumWeight;
+                $strWeight .= sprintf("%10.5f", $tempWeight);
+            }
+            $strWeight .= "  *\n";
+            $countForWeight++;
+        }
+        print "\n", " " x 13, "   Summary. $traceName trace. Weights", "\n\n\n";
+        print "*" x (35 + 10 * $#aRegMas), "\n$strWeight", "*" x (35 + 10 * $#aRegMas), "\n\n\n\n\n";
+    }            
+}
+
+#EOF

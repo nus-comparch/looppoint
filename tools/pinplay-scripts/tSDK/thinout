@@ -1,0 +1,167 @@
+#!/bin/sh
+# Bug reports and comments to Igor.Ermolaev@intel.com
+base=$(dirname $(readlink -f ${BASH_SOURCE[0]:-$0}))
+sels=( "$@" )
+saveIFS=$IFS;IFS='
+';results=( `grep -H 'inscount' *.*[0-9].result 2>/dev/null|tr -d ' '` )
+IFS=$saveIFS
+prefix=''
+for fmt in ':cat' '.gz:gzip -cd' '.bz2:bzip2 -cd';do
+   if [ ${#results[@]} -gt 1 ];then break; fi
+   sfx=${fmt%%:*};ext=${fmt##*:}
+   need_empty=true
+   for lit in *.*[0-9].lit$sfx;do
+      if [ "$lit" == '*.*[0-9].lit'$sfx ];then break; fi
+      if [ $need_empty == true ];then unset results;need_empty=false; fi
+      size=`$ext $lit|grep -m 1 '#total litcount'|awk '{print $3}'`
+      if [ -z "$size" ];then size=`$ext $lit|grep '^step [0-9]'|awk 'END{print $4}'`; fi
+      if [ -z "$size" ];then size=0; fi
+      if [ -z "$prefix" ];then prefix=${lit%.*[0-9].lit$sfx}; fi
+      results[${#results[@]}]=${lit/%.lit$sfx/.result}:inscount:$size
+   done
+done
+if [ -z "$prefix" ];then prefix=pinlit64;fi
+max_idx=0
+for result in "${results[@]}";do
+   saveIFS=$IFS;IFS=':'
+      info=( $result )
+   IFS=$saveIFS
+   cur_idx=${info[0]%.*};cur_idx=${cur_idx##*.}
+   if [ $cur_idx -gt $max_idx ];then max_idx=$cur_idx; fi
+done
+for idx in $(seq 0 $max_idx);do
+   for result in "${results[@]}";do
+      saveIFS=$IFS;IFS=':'
+         info=( $result )
+      IFS=$saveIFS
+      cur_idx=${info[0]%.*};cur_idx=${cur_idx##*.}
+      if [ $cur_idx -eq $idx ];then continue 2; fi
+   done
+   results[${#results[@]}]=$prefix.$idx.result:inscount:0
+done
+# ----------------------------------------------------------------------------------------------
+max=''
+min=''
+cnt=0
+sum=0
+for result in "${results[@]}";do
+   saveIFS=$IFS;IFS=':'
+      info=( $result )
+   IFS=$saveIFS
+   if [ -z "$max" ] || [ ${info[2]} -gt $max ];then max=${info[2]}; fi
+   if [ ${info[2]} -ne 0 ];then 
+      if [ -z "$min" ] || [ ${info[2]} -lt $min ];then min=${info[2]}; fi
+      (( sum += info[2] ))
+      (( cnt++ ))
+   fi
+done
+if [ $cnt -le 2 ];then 
+   avg=$max
+else
+   avg=$(( ( sum - min - max ) / ( cnt - 2 ) ))
+fi
+sfxs='.result .global.log .result_play .cmd .lit .race .reg .sel .text .lib_text .sync_text .dyn_text .mem .address .ptov .ami .wmi .arch.xml .procinfo.xml .tzcat .mfp.tzcat .sift'
+for result in "${results[@]}";do
+   saveIFS=$IFS;IFS=':'
+      info=( $result )
+   IFS=$saveIFS
+   cur_idx=${info[0]%.*};cur_idx=${cur_idx##*.}
+   if [ ${info[2]} -lt 1 ];then
+      empts[${#empts[@]}]=$cur_idx
+   else
+      if [ ${#sels[@]} -eq 0 ];then
+         if [ $(( info[2] * 10 / avg )) -ge 1 ];then continue 2; fi
+      else
+         action=delete
+         for sel in "${sels[@]}";do
+            tid=${sel#-}
+            if [ $tid != $sel ];then action=''; fi
+            if [ $cur_idx -eq $tid ];then 
+               if [ -n "$action" ];then 
+                  continue 2
+               else
+                  action=delete
+                  break
+               fi
+            fi 
+         done
+         if [ -z "$action" ];then continue; fi
+      fi
+   fi
+   if [ -z "$save_log0" ];then
+      log0=${info[0]%.*[0-9].result}.global.log
+      if [ ! -f $log0 ];then log0=${info[0]%.*[0-9].result}.0.result; fi
+      if [ -f $log0 ];then
+         save_log0=`mktemp`
+         cp -f $log0 $save_log0
+      else
+         save_log0=none
+      fi
+   fi
+   echo Deleting thread $cur_idx
+   for sfx in $sfxs;do
+      [ -f ${info[0]/%.result/$sfx} ] && rm ${info[0]/%.result/$sfx}
+      [ -f ${info[0]/%.result/$sfx}.gz ] && rm ${info[0]/%.result/$sfx}.gz
+      [ -f ${info[0]/%.result/$sfx}.bz2 ] && rm ${info[0]/%.result/$sfx}.bz2
+   done
+   insgs[${#insgs[@]}]=$cur_idx
+done
+moving=false
+for result in "${results[@]}";do
+   saveIFS=$IFS;IFS=':'
+      info=( $result )
+   IFS=$saveIFS
+   cur_idx=${info[0]%.*};cur_idx=${cur_idx##*.}
+   shl=0
+   for insg in ${insgs[@]};do
+      if [ $cur_idx -eq $insg ];then
+         continue 2
+      elif [ $cur_idx -gt $insg ];then
+         (( shl++ ))
+      fi
+   done
+   if [ $shl -ne 0 ];then
+      for sfx in $sfxs;do
+         [ -f ${info[0]/%.result/$sfx} ] && mv -f ${info[0]/%.result/$sfx} ${info[0]/%.$cur_idx.result/.$((cur_idx-shl))$sfx}.__moving__
+         [ -f ${info[0]/%.result/$sfx}.gz ] && mv -f ${info[0]/%.result/$sfx}.gz ${info[0]/%.$cur_idx.result/.$((cur_idx-shl))$sfx}.gz.__moving__
+         [ -f ${info[0]/%.result/$sfx}.bz2 ] &&  mv -f ${info[0]/%.result/$sfx}.bz2 ${info[0]/%.$cur_idx.result/.$((cur_idx-shl))$sfx}.bz2.__moving__
+      done
+      moving=true
+   fi
+done
+if [ $moving == true ];then rename .__moving__ '' *.__moving__; fi
+if [ ${#insgs[@]} -ne 0 ] && [ "$save_log0" != none ];then
+   new_log0=`mktemp`
+   #sed -n '/inscount/q;p' $save_log0 >$new_log0
+   #grep -w 'inscount\|memcount\|OSPid\|OSTid\|log_entries\|ended_before_sc\|num_logged_true_dependencies\|num_logged_false_dependencies' $log0 >>$new_log0
+   num_stc=`grep -m 1 -w num_static_threads $save_log0|awk '{print $2}'`
+   num_dyn=`grep -m 1 -w num_dynamic_threads $save_log0|awk '{print $2}'`
+   num_str=`grep -m 1 -w num_threads_started $save_log0|awk '{print $2}'`
+   #sed -n '1,/num_logged_false_dependencies/d;/ip_type/q;s/\(num_static_threads\s*:\s*\)\([0-9]\+\)/\1'$((num_stc-${#insgs[@]}))'/;s/\(num_dynamic_threads\s*:\s*\)\([0-9]\+\)/\1'$((num_dyn-${#insgs[@]}))'/;p' $save_log0 >>$new_log0 
+   #grep -w 'ip_type\|ip_entry' $log0 >>$new_log0
+   #sed '1,/ip_entry/d;/ip_entry/d' $save_log0 >> $new_log0
+   sed -e 's/\(num_static_threads\s*:\s*\)\([0-9]\+\)/\1'$((num_stc-${#insgs[@]}))'/' -e 's/\(num_dynamic_threads\s*:\s*\)\([0-9]\+\)/\1'$((num_dyn-${#insgs[@]}))'/' -e 's/\(num_threads_started\s*:\s*\)\([0-9]\+\)/\1'$((num_str-${#insgs[@]}))'/' $save_log0 >>$new_log0 
+
+   mv -f $new_log0 $log0 
+   rm $save_log0
+fi
+if [ ${#empts[@]} -eq 0 ];then
+   adjs=( ${insgs[@]} )
+else
+   for insg in ${insgs[@]};do
+      shl=0
+      for empt in ${empts[@]};do
+         if [ $empt -eq $insg ];then continue 2; fi
+         if [ $empt -lt $insg ];then (( shl++ )); fi
+      done
+      adjs[${#adjs[@]}]=$(( insg - shl ))
+   done
+fi
+if [ ${#adjs[@]} -ne 0 ];then
+   arch=${info[0]/.*[0-9].result/.arch}.xml
+   if [ -f $arch ];then
+      tmp=`mktemp`
+      cat $arch|$base/del_cpus ${adjs[@]} >$tmp
+      mv -f $tmp $arch
+   fi
+fi

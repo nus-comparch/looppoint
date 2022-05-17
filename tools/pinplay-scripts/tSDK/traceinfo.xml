@@ -1,0 +1,276 @@
+<?xml version='1.0' standalone='yes'?>
+<!-- This is information about a workload trace in XML format.
+     You can browse this file with Microsoft Internet Explorer
+     or Microsoft XML Notepad. -->
+<!DOCTYPE trace-info [
+  <!--
+    This is the XML document type declaration (DTD).
+    It defines the tags that can be used in this document and
+    their hierarchical relationship.
+    Do not change the DTD without approval.
+    This DTD was last modified on Jan 02, 2002 by Chuck Yount.
+    Information on your application goes in a trace-info tag after the DTD.
+  -->
+
+  <!-- This top-level tag contains all the other tags. -->
+  <!ELEMENT trace-info (contact+, workload, traces?, platform?)>
+
+  <!-- This 2nd-level tag contains info about a person to contact about the 
+    workload or how it was traced. One required; more than one allowed. -->
+  <!ELEMENT contact (name, responsibility?, dept?, email?, phone?, manager*)>
+
+  <!-- These tags contain more information about the contact person. -->
+  <!ELEMENT name (#PCDATA)>    <!-- Required. -->
+  <!ELEMENT responsibility (#PCDATA)>    <!-- Optional. -->
+  <!ELEMENT dept (#PCDATA)>    <!-- Optional. -->
+  <!ELEMENT email (#PCDATA)>   <!-- Optional. -->
+  <!ELEMENT phone (#PCDATA)>   <!-- Optional. -->
+  <!ELEMENT manager (#PCDATA)>    <!-- Optional; more than one allowed. -->
+
+  <!-- This 2nd-level tag contains info about the workload itself. 
+    Optional. -->
+  <!ELEMENT workload
+    (name, isv?, version?, compiler?,
+     segment*, category?,
+     description?, importance?,
+     performance-issue*,
+     configuration*, other*)>
+
+  <!-- The name tag (as defined above) must be used to name the workload.
+    Use a descriptive name. -->
+
+  <!-- The Independent Software Vendor. Optional. -->
+  <!ELEMENT isv (#PCDATA)>
+
+  <!-- The version of the software. A date can be used if no
+    uniquely-identifying version exists. Should match the field in the
+    filename, except this can be formatted for readability. Optional. -->
+  <!ELEMENT version (#PCDATA)>
+
+  <!-- A description of the compiler(s) used. Should match the field in the
+    filename, except this can be formatted for readability. Optional. -->
+  <!ELEMENT compiler (#PCDATA)>
+
+  <!-- Intel market segment. Currently, should be one of "desktop",
+    "server", "mobile" or "handheld", although this is not grammatically
+    enforced since it may change. Optional. -->
+  <!ELEMENT segment (#PCDATA)>
+
+  <!-- Type of application. Examples: "Office Productivity", 
+    "Content Creation", "Internet", "Multimedia", "3D Game". Optional. -->
+  <!ELEMENT category (#PCDATA)>
+
+  <!-- A sentence or so describing what the workload is and does.
+    Optional. -->
+  <!ELEMENT description (#PCDATA)>
+
+  <!-- A sentence or so about why this workload is important to Intel. 
+    Optional. -->
+  <!ELEMENT importance (#PCDATA)>
+
+  <!-- A description of a particular performance issue that is known or
+    suspected. Examples: "2GHz P4/ 1.2GHz K7 scaling = 0.9.", 
+    "Contains many unaligned load operations."  
+    Optional; can have more than one. -->
+  <!ELEMENT performance-issue (#PCDATA)>
+
+  <!-- How the workload was setup and run, datasets used, etc. 
+    Optional; can have more than one. -->
+  <!ELEMENT configuration (#PCDATA)>
+
+  <!-- This 2nd-level tag contains info about how the traces were
+    taken and processed.  Optional. -->
+  <!ELEMENT traces (trace-details?, triggers?, validation?, collection-issue*, other*)>
+
+  <!-- This 3rd-level tag contains info about the trace set. -->
+  <!ELEMENT trace-details (trace-data+, raw-weight-data*) >
+  <!-- The number of traces in the set. -->
+  <!ATTLIST trace-details  trace-count CDATA #REQUIRED>
+  <!-- The number of instructions in the application. -->
+  <!ATTLIST trace-details  total-instruction-count CDATA #IMPLIED>
+  <!-- The Operation ID of the trace set. -->
+  <!ATTLIST trace-details  opid CDATA #IMPLIED>
+  <!-- The work week the trace set was published. -->
+  <!ATTLIST trace-details  publication-workweek CDATA #REQUIRED>
+  <!-- The year the trace set was published. -->
+  <!ATTLIST trace-details  publication-year CDATA #REQUIRED>
+  <!-- The TRWI Rating for the trace set. Possible values are EXCEPTIONAL, REPRESENTATIVE, and LIMITED. -->
+  <!ATTLIST trace-details  trwi-rating CDATA #IMPLIED>
+  <!-- The TRWI Score for the trace set. -->
+  <!ATTLIST trace-details  trwi-score CDATA #IMPLIED>
+  <!-- The CPI Histrogram Coverage value for the trace set. -->
+  <!ATTLIST trace-details  cpi-histogram-coverage CDATA #IMPLIED>
+  <!-- The CPI Histogram Comparison value for the trace set. -->
+  <!ATTLIST trace-details  cpi-histogram-comparision CDATA #IMPLIED>
+  <!-- The CPI Histogram Correlation value for the trace set. -->
+  <!ATTLIST trace-details  cpi-histogram-correlation CDATA #IMPLIED>
+	
+  <!-- This 4th-level tag contains info about the individual trace. -->
+  <!ELEMENT trace-data (trace-weight*, trace-subsetting*)>
+  <!-- The trace name. -->
+  <!ATTLIST trace-data trace-name CDATA #REQUIRED>
+  <!-- The workload CPI value corresponding to the trace. -->
+  <!ATTLIST trace-data workload-cpi CDATA #IMPLIED>
+  <!-- The CPI value of the trace. -->
+  <!ATTLIST trace-data trace-cpi CDATA #IMPLIED>
+  <!-- The instruction offset within the workload where the trace was collected. -->
+  <!ATTLIST trace-data instruction-offset CDATA #REQUIRED>
+  <!-- The total instruction count of the trace. -->
+  <!ATTLIST trace-data instruction-count CDATA #REQUIRED>	
+    
+  <!-- This 5th-level tag contains info about trace weighting. -->
+  <!ELEMENT trace-weight (#PCDATA)>
+  <!-- The methodogoly used to generate the weight for the trace. -->
+  <!ATTLIST trace-weight method CDATA #REQUIRED>
+  <!-- The weight value for the trace. -->
+  <!ATTLIST trace-weight weight CDATA #REQUIRED>
+  <!-- The number of instructions represented by the weight. This value only applies to the CalWeights methodology. -->
+  <!ATTLIST trace-weight instruction-represented CDATA #IMPLIED>
+  <!-- The cluster ID associated with the weight. This value only applies to the K-Means methodolgy. -->
+  <!ATTLIST trace-weight cluster-id CDATA #REQUIRED>
+  
+  <!-- This 5th-level tag contains info about trace subsetting. -->
+  <!ELEMENT trace-subsetting (#PCDATA)>
+  <!-- The methodology used in the trace subsetting. -->
+  <!ATTLIST trace-subsetting method CDATA #REQUIRED>
+  <!-- The value of trace subsetting -->
+  <!ATTLIST trace-subsetting value CDATA #REQUIRED>
+  
+  <!-- This 4th-level tag contains the raw trace weighting data. Put this data inside a \<![CDATA[ ... ]]\> block to preserve formatting. -->
+  <!ELEMENT raw-weight-data (method, raw-data)>
+  <!-- The methogology used to generate trace weights. -->
+  <!-- The methogology used to generate trace weights. -->
+  <!ELEMENT method (#PCDATA)>
+  <!-- The raw data corresponding to the trace weighting methodoly. -->
+  <!ELEMENT raw-data (#PCDATA)>
+  <!ATTLIST raw-data   xml:space (default|preserve) 'preserve'>
+
+  <!-- Description of how trace-collection locations were selected
+    and activated.  Optional. -->
+  <!ELEMENT triggers (#PCDATA)>
+
+  <!-- Description of how it was determined that traces captured what
+    was desired from the workload.  Optional. -->
+  <!ELEMENT validation (#PCDATA)>
+
+  <!-- Any issue that occurred during collection or processing that
+    restricted the workload or limited the trace set. 
+    Optional; can have more than one. -->
+  <!ELEMENT collection-issue (#PCDATA)>
+
+  <!-- This 2nd-level tag contains info about the platform on which
+    the trace was taken. Optional. -->
+  <!ELEMENT platform (system-info?, other*)>
+
+  <!-- Output of msinfo32, System Summary. 
+     Put this data inside a <![CDATA[ ... ]]> block to preserve formatting.
+     Optional. -->
+  <!ELEMENT system-info (#PCDATA)>
+  <!ATTLIST system-info   xml:space (default|preserve) 'preserve'>
+
+  <!-- Any other information that doesn't fit anywhere else.
+    Optional; can have more than one. -->
+  <!ELEMENT other (#PCDATA)>
+
+  <!--
+    DTD notes:
+    A validating XML parser will use this DTD to determine whether
+      the document follows these rules.
+    No suffix on a tag name or list means exactly one required,
+      "+" means one-or-more allowed, "?" means one-or-zero,
+      and "*" means zero or more.
+    "#PCDATA" indicates free text.
+    See http://www.xml.com/axml/testaxml.htm for a full specification.
+  -->
+  
+<!-- End of the DTD. --> 
+]>
+<trace-info>
+<contact>
+<name>__cnt_name__</name>
+<dept>SSG</dept>
+<email>unknown</email>
+<phone>unknown</phone>
+</contact>
+<workload>
+<name>__wrk_name__</name>
+
+<isv>unknown</isv>
+
+<version>__wrk_version__</version>
+
+<!-- A description of the compiler(s) and their options used. 
+  Should match the field in the filename, except this can be formatted
+  for readability. -->
+<compiler>__wrk_compiler__</compiler>
+
+<!-- Intel market segment. Currently, should be one of 'desktop',
+  'server', 'mobile' or 'handheld', although this is not grammatically
+  enforced since it may change. -->
+<segment>HPC</segment>
+
+<!-- Type of application. Examples: 'Office Productivity', 
+  'Content Creation', 'Internet', 'Multimedia', '3D Game'.  --> 
+<category>unknown</category> 
+
+<!-- A sentence or so describing the application and workload. -->
+<description>none</description>
+
+<!-- A sentence or so about why this application is important to Intel. -->
+<importance>
+AVX2 vs AVX3 SKX speedup
+</importance>
+
+<!-- A description of a particular performance issue that is known or
+  suspected. Examples: '2GHz P4/ 1.2GHz K7 scaling = 0.9.', 
+  'Contains many unaligned load operations.'  
+  You can have more than one. -->
+<performance-issue>
+unknown
+</performance-issue>
+
+<!-- How the application was setup and run, datasets used, etc. -->
+<configuration>
+unknown
+</configuration>
+
+<!-- Native run-time information goes here: EM64T, Opteron, IPF etc. -->
+<other>
+<![CDATA[
+NATIVE TIME
+]]>
+</other>
+
+</workload>
+
+<traces>
+
+<triggers>
+Used SDE -control start/stop:address to start/stop tracing of hotspots
+</triggers>
+<!-- Any issue that occurred during collection or processing that
+  restricted the workload or limited the trace set. 
+  You can have more than one. -->
+<collection-issue>
+Covered only __trc_coverage__% of application since rest is MPI or/and OMP, and small unimportant functions.
+</collection-issue>
+
+<!-- Anything else about the traces. You can have more than one. -->
+</traces>
+<platform>
+<system-info>
+
+<![CDATA[
+unknown
+]]>
+</system-info>
+<!-- Anything else about the platform. You can have more than one. -->
+<other>
+Traces version is __trc_version__
+
+AVX2 share: NN%
+AVX3 share: MM%
+Traces collected with __sde_version__ and converted to LIT format.
+</other>
+</platform>
+</trace-info>

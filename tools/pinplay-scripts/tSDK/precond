@@ -1,0 +1,75 @@
+#!/bin/sh
+# Bug reports and comments to Igor.Ermolaev@intel.com
+base=$(dirname $(readlink -f ${BASH_SOURCE[0]:-$0}))
+if [ "$1" == create ] || [ "$1" == add ];then
+   cmdl=`TRACING_SDK_GATHER_CND='' TRACING_SDK_GATHER_SCNT="$TRACING_SDK_PRECOND_SCNT" $base/gather -pinlit2|sed -n 's/^\s\+\(sde\s.*\)$/\1/p'|head -n 1`
+   if [ -z "$cmdl" ] ;then
+      echo;echo Error: Can\'t find boundaries;echo
+      exit
+   fi
+   anchor=`ls -t1 {loop,func,call,path}.*.s 2>/dev/null|head -n 1`
+   isa=$(basename $anchor .s);isa=${isa#loop.};isa=${isa#func.};isa=${isa#call.};isa=${isa#path.}
+   #if [[ ! $anchor == func.*.s ]];then echo >>$anchor; fi
+   echo "; $cmdl" >>$anchor
+   precnd=precond.$isa.tbz2
+   if [ "$1" == create ];then
+      mode=cj
+      idx=1
+   elif [ "$1" == add ];then
+      bzip2 -d $precnd
+      precnd=${precnd%.tbz2}.tar
+      mode=r
+      idx=`tar tf $precnd --wildcards '*.p*[0-9].s'|wc -l`
+      ((idx++))
+   fi
+   newa=${anchor/%.s/.p$idx.s};mv $anchor $newa;anchor=$newa
+   tar ${mode}fv $precnd $anchor
+   if [ ${precnd##*.} == tar ];then
+      bzip2 --best $precnd
+      mv $precnd.bz2 ${precnd%.tar}.tbz2
+   fi
+elif [ "$1" == propagate ];then
+   save_IFS="$IFS";IFS='
+';    anchors=( `tar tfj "$4" --wildcards '*.p*[0-9].s'` )
+   IFS="$save_IFS"
+   newp=precond."$3".tar
+   mode=c
+   echo
+   for anchor in "${anchors[@]}";do
+      tar xfvj "$4" $anchor
+      echo
+      cmdl=`TRACING_SDK_PROPAGATE_CND='' TRACING_SDK_PROPAGATE_FUNC="$TRACING_SDK_PRECOND_FUNC" TRACING_SDK_PROPAGATE_SRCL="$TRACING_SDK_PRECOND_SRCL" \
+         TRACING_SDK_PROPAGATE_OFS="$TRACING_SDK_PRECOND_OFS" TRACING_SDK_PROPAGATE_BFCT="$TRACING_SDK_PRECOND_BFCT" TRACING_SDK_PROPAGATE_VFCT="$TRACING_SDK_PRECOND_VFCT" \
+         TRACING_SDK_PROPAGATE_NST="$TRACING_SDK_PRECOND_NST" TRACING_SDK_PROPAGATE_HIDX="$TRACING_SDK_PRECOND_HIDX" \
+         $base/propagate "$2" "$3" $anchor|sed -n 's/^\s\+\(sde\s.*\)$/\1/p'|head -n 1`
+      echo
+      anc=`ls -t1 {loop,func,call,path}.*.s 2>/dev/null|head -n 1`
+      if [ "$anc" == "$anchor" ] || [ -z "$cmdl" ] ;then
+         echo;echo Error: Can\'t propagate "$anchor" to "$3";echo
+         exit
+      fi
+      echo "; $cmdl" >>$anc
+      idx=`echo $anchor|sed -n 's/^.*\(\.p[0-9]\+\)\.s$/\1/p'`
+      newa=${anc/%.s/$idx.s};mv $anc $newa
+      tar ${mode}fv $newp $newa
+      if [ $mode == c ];then mode=r; fi
+   done
+   bzip2 --best $newp
+   mv $newp.bz2 ${newp%.tar}.tbz2
+elif [ "$1" == print ];then
+   save_IFS="$IFS";IFS='
+';    anchors=( `tar tfj "$2" --wildcards '*.p*[0-9].s'` )
+   IFS="$save_IFS"
+   cmdl=''
+   for i in $(seq 1 "${#anchors[@]}");do
+      for anchor in "${anchors[@]}";do
+         idx=`echo $anchor|sed -n 's/^.*\.p\([0-9]\+\)\.s$/\1/p'`
+         if [ "$idx" == $i ];then
+            addr=`tar xfjO "$2" $anchor|sed -n 's/^;\s\+sde.*\s-start-address\s\+\(\S\+\).*$/\1/p'|tail -n 1`
+            if [ -n "$addr" ];then cmdl=${cmdl:+$cmdl }"-waitfor-address $addr"; fi
+            break
+         fi
+      done
+   done
+   echo $cmdl
+fi

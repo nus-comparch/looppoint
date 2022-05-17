@@ -1,0 +1,30 @@
+#!/bin/sh
+# Bug reports and comments to Igor.Ermolaev@intel.com
+base=$(dirname $(readlink -f ${BASH_SOURCE[0]:-$0}))
+basename=${1%.tzcat.gz};basename=${basename%.mfp}
+osfx=pre
+code=`mktemp $PWD/code.XXXXXXXXXX`
+$base/compresslt "$1"|grep -i '^\s\+CD\(RD\|WR\)' >"$code"
+if [ -s "$basename.tlb.tzcat.gz" ];then
+   $base/compresslt "$basename.tlb.tzcat.gz" >"$basename.$osfx.lcat"
+   cat "$code" >>"$basename.$osfx.lcat"
+else
+   cp -f "$code" "$basename.$osfx.lcat"
+fi
+data=`mktemp $PWD/data.XXXXXXXXXX`
+$base/compresslt "$1"|grep -vi '^\s\+CD\(RD\|WR\)' >"$data"
+cwrm=`wc -l "$data"|awk '{print $1}'`
+twrm=`echo "scale=20;f=($3);scale=0;($cwrm*f+0.5)/1"|bc`
+if [ -n "$twrm" ] && [ "$twrm" != '0' ]; then
+   tail -n $twrm "$data" >>"$basename.$osfx.lcat"
+   cat "$code" >>"$basename.$osfx.lcat"
+fi 
+hwrm=`echo "scale=20;f=($2);scale=0;($cwrm*f+0.5)/1"|bc`
+if [ -n "$hwrm" ] && [ "$hwrm" != '0' ]; then
+   head -n $hwrm "$data" >>"$basename.$osfx.lcat"
+   cat "$code" >>"$basename.$osfx.lcat"
+fi
+rm "$code" "$data"
+$base/compresslt -v 5 "$basename.$osfx.lcat" "$basename.$osfx.tzcat"
+[ -s "$basename.$osfx.tzcat" ] && rm -f "$basename.$osfx.lcat"
+rm -f "$basename.$osfx.tzcat.gz";gzip --best "$basename.$osfx.tzcat"

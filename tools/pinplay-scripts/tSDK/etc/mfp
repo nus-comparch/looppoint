@@ -1,0 +1,111 @@
+#!/usr/bin/perl -w
+# Bug reports and comments to Igor.Ermolaev@intel.com
+use strict;
+no warnings 'portable';
+
+use constant { FALSE=>0, TRUE=>-1 };
+
+my $dump_rqrd = FALSE;
+my $page_size = undef;
+
+if( $#ARGV >= 0 && $ARGV[0] eq '-d' )
+{
+   $dump_rqrd = TRUE;
+   shift @ARGV;
+}
+if( $#ARGV >= 0 && $ARGV[0] eq '-p' )
+{
+   $page_size = int $ARGV[1];
+   shift @ARGV;shift @ARGV;
+}
+
+if( defined $page_size )
+{
+   my $mask = ~(($page_size>>6)-1);
+   my %code = ();
+   my %data = ();
+   
+   while(<STDIN>)
+   {
+      /^\s*(\S+)\s+([[:xdigit:]]+)[[:xdigit:]]/o;
+      my $cid  = (hex $2)>>2; # cache line id
+      my $pid  = $cid&$mask;  # page id
+      my $page = undef;
+      if( $1 eq 'CDRD64B' )
+      {
+         $code{$pid} = { count=>0, lines=>{} } if !exists $code{$pid};
+         $page = $code{$pid};
+      }
+      else
+      {
+         $data{$pid} = { count=>0, lines=>{} } if !exists $data{$pid};
+         $page = $data{$pid};
+      }
+      $page->{count}++;
+      if( exists $page->{lines}{$cid} ){ $page->{lines}{$cid}{count}++;                   }
+      else                             { $page->{lines}{$cid} = { count=>1, record=>$_ }; }
+   }
+   for my $p ( sort{ $a->{count}<=>$b->{count} } values %data )
+   {
+      my $m_rec = undef;
+      my $m_cnt = 0;
+      for( values %{$p->{lines}} )
+      {
+         if( $_->{count} > $m_cnt ){ $m_rec=$_->{record};$m_cnt=$_->{count}; }
+      }
+      for( my $i = 0; $i < $p->{count}; $i++ ){ print $m_rec; }
+   }
+   for my $p ( sort{ $a->{count}<=>$b->{count} } values %code )
+   {
+      my $m_rec = undef;
+      my $m_cnt = 0;
+      for( values %{$p->{lines}} )
+      {
+         if( $_->{count} > $m_cnt ){ $m_rec=$_->{record};$m_cnt=$_->{count}; }
+      }
+      for( my $i = 0; $i < $p->{count}; $i++ ){ print $m_rec; }
+   }
+}
+else
+{
+   my %refs   = ();
+   my $hits   = 0;
+   my $misses = 0;
+
+  for( my $phase = -1; $phase <= $#ARGV; $phase++ )
+  {
+      if( $phase == -1 )
+      {
+         while(<STDIN>)
+         {
+            /^\s*(\S+)\s+([[:xdigit:]]+)[[:xdigit:]]/o;
+            next if $1 eq 'CDRD64B';
+            my $idx = (hex $2)>>2;
+            if( exists $refs{$idx} ){ $refs{$idx}++; }
+            else
+            {
+               $refs{$idx} = 1;
+               printf "%X\n", $idx if $dump_rqrd == TRUE;
+            }
+         }
+      }
+      elsif( $phase == 0 )
+      {
+         open MFP, $ARGV[$phase] or die;
+         while(<MFP>)
+         {
+            /^([[:xdigit:]]+)$/o;
+            if( exists $refs{hex $1} ){ $hits++;   }
+            else                      { $misses++; }
+         }
+         close MFP;
+      }
+   }
+
+   my $lines = keys %refs;
+
+   printf "Footprint: %.1fMB\n", $lines/(16*1024) if $dump_rqrd == FALSE;
+   printf "Unused: %.1f%%\nWarmed: %.1f%%\n", 100.0*($lines-$hits)/$lines, 100.0*$hits/($hits+$misses) if $hits+$misses > 0;
+}
+
+exit 0;

@@ -23,6 +23,7 @@ run-root:
 
 apps:
 	make -C apps/demo/matrix-omp
+	make -C apps/demo/dotproduct-omp
 
 pinkit:
 	@if [ ! -d "tools/pin-3.13-98189-g60a6ef199-gcc-linux" ]; then \

@@ -2,7 +2,7 @@
 # BEGIN_LEGAL
 # The MIT License (MIT)
 #
-# Copyright (c) 2021, National University of Singapore
+# Copyright (c) 2022, National University of Singapore
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -77,6 +77,9 @@ export PIN_APP_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
   file(os.path.join(tmpdir, 'execute.sh'), 'w').write(execute_script)
   cmd = 'bash %s' % os.path.join(tmpdir, 'execute.sh')
   if config['logging']:
+    os.system('echo "Running commands:" >> %s' % config['log_file'])
+    for i_cmd in startcmd:
+      os.system('echo "%s" >> %s' % (i_cmd, config['log_file']))
     cmd += ' 2>&1 | tee -a %s' % config['log_file']
   ex(cmd, cwd = tmpdir)
   os.system('rm -rf %s' % tmpdir)
@@ -148,7 +151,11 @@ def graphite_submit(
     (if [ -x "./postprocess" ]; then "./postprocess" "%(program)s" "%(inputsize)s" "%(nthreads)s" "%(lp_base_dir)s"; fi )
   ''' % locals())
 
-  cmd = 'bash %s 2>&1 | tee -a %s' % (os.path.join(tmpdir, 'execute.sh'), config['log_file'])
+  cmd = 'bash %s' % os.path.join(tmpdir, 'execute.sh')
+  if config['logging']:
+    os.system('echo "Running command:" >> %s' % config['log_file'])
+    os.system('echo "%s %s" >> %s' % (startcmd, graphite_extra_opts, config['log_file']))
+    cmd += ' 2>&1 | tee -a %s' % config['log_file']
   ex(cmd, cwd = tmpdir)
   os.system('rm -rf %s' % tmpdir)
   return

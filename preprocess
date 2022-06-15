@@ -2,7 +2,7 @@
 # BEGIN_LEGAL
 # The MIT License (MIT)
 #
-# Copyright (c) 2021, National University of Singapore
+# Copyright (c) 2022, National University of Singapore
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -57,6 +57,7 @@ input_dirs['test'] = [
         'apps/cpu2017/627.cam4_s/test',
         'apps/demo/matrix-omp/test',
         'apps/demo/dijkstra-openmp/test',
+        'apps/demo/dotproduct-omp/test',
 ]
 
 input_dirs['C'] = [
@@ -90,6 +91,7 @@ binary_path['cpu2017'] = [
 binary_path['demo'] = [
         'apps/demo/matrix-omp/matrix-omp',
         'apps/demo/dijkstra-openmp/dijkstra_openmp.gcc',
+        'apps/demo/dotproduct-omp/dotproduct-omp',
         ]
 
 binary_path['npb'] = [
@@ -118,6 +120,7 @@ name_to_dir = {
         'xz': '657.xz_s',
         'matrix': 'matrix-omp',
         'dijkstra': 'dijkstra-openmp',
+        'dotproduct': 'dotproduct-omp',
         'bt': 'bt',
         'cg': 'cg',
         'ep': 'ep',

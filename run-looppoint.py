@@ -2,7 +2,7 @@
 # BEGIN_LEGAL
 # The MIT License (MIT)
 #
-# Copyright (c) 2021, National University of Singapore
+# Copyright (c) 2022, National University of Singapore
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -182,7 +182,7 @@ def get_startsim_parms(sim_config, config):
   sniper_args += ['-gtraceinput/timeout=2000']
   sniper_args += ['-gscheduler/type=%(scheduler)s' % sim_config]
   sniper_args += ['-c%(arch_cfg)s' % sim_config]
-  sniper_args += ['--trace-args="-flow 1000"']
+  sniper_args += ['--trace-args="-sniper:flow 1000"']
   if  ('end_address' in sim_config) and (sim_config['end_address'] != None):
     if sim_config['start_address_count'] == '0':
       sniper_args += ['-ssimuserroi --roi-script --trace-args="-control stop:address:%(end_address)s:count%(end_address_count)s:global"' % sim_config]
@@ -413,6 +413,7 @@ def bm_to_path(config):
     'xz': '657.xz_s',
     'matrix': 'matrix-omp',
     'dijkstra': 'dijkstra-openmp',
+    'dotproduct': 'dotproduct-omp',
     'bt': 'bt',
     'cg': 'cg',
     'ep': 'ep',
@@ -446,7 +447,8 @@ def add_dependent_config(config):
   config['sim_res_dir_default']  = os.path.join(config['output_base_dir_default'],'simulation')
   config['sim_res_dir']  = os.path.join(config['output_base_dir'],'simulation')
   config['whole_basename'] = os.path.join(config['output_base_dir'], 'whole_program.' + config['bm_input'], config['bm_name'] + '.' + config['bm_input'])
-  config['slice_size'] = str(int(config['ncores'])*100000000)
+  # regions of size 100M instructions per thread for regular applications and 10M per thread for demo applications
+  config['slice_size'] = str(int(config['ncores'])*10000000) if config['bm_suite'] == 'demo' else str(int(config['ncores'])*100000000)
   if config['input_class'] == 'train' or config['input_class'] == 'C':
     config['cluster_maxk'] = '50'
 
@@ -459,7 +461,7 @@ def create_default_config():
   config = {}
 
   # application
-  config['bm_name'] = 'matrix'
+  config['bm_name'] = 'dotproduct'
   config['bm_suite'] = 'demo'
   config['bm_input'] = '1'
   config['input_class'] = 'test'

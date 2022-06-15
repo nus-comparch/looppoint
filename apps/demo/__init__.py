@@ -1,10 +1,14 @@
 name_to_dir = {
   'matrix': 'matrix-omp',
+  'dotproduct': 'dotproduct-omp',
 }
 
 name_to_input_index = {
         'matrix': {
             'test': 'test',
+            },
+        'dotproduct': {
+            'test': 'test'
             },
 }
 

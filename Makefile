@@ -11,6 +11,7 @@ TZFULL=$(subst /, ,$(shell readlink /etc/localtime))
 TZ=$(word $(shell expr $(words $(TZFULL)) - 1 ),$(TZFULL))/$(word $(words $(TZFULL)),$(TZFULL))
 
 export SDE_BUILD_KIT=${PWD}/tools/sde-external-9.0.0-2021-11-07-lin
+SNIPER_GIT_REPO?=https://github.com/snipersim/snipersim.git
 
 run:
 	docker run --rm -it -v "${PWD}:${PWD}" --user $(shell id -u):$(shell id -g) -w "${PWD}" $(DOCKER_IMAGE)
@@ -49,17 +50,11 @@ looppoint: sdekit
 	make -C tools/src/Drivers build TARGET=intel64
 
 sniper: pinkit
-ifndef SNIPER_GIT_REPO
-	$(error Please set the SNIPER_GIT_REPO variable to the Sniper link. If you do not have one, visit https://snipersim.org/w/Download)
-endif
 	@if [ ! -d "tools/sniper" ]; then \
-		$(info Setting SNIPER_GIT_REPO as $(SNIPER_GIT_REPO) to download Sniper) \
-		git clone $(SNIPER_GIT_REPO) tools/sniper && \
-		mkdir -p tools/sniper/pin_kit && \
-		cp -r tools/pin-3.13-98189-g60a6ef199-gcc-linux/* tools/sniper/pin_kit && \
-		patch -d tools -p 0 -i sniper_looppoint.patch ; \
+		$(info Downloading Sniper from $(SNIPER_GIT_REPO)) \
+		git clone $(SNIPER_GIT_REPO) tools/sniper ; \
 	fi
-	make -C tools/sniper -j
+	make -C tools/sniper
 
 tools: looppoint sniper
 

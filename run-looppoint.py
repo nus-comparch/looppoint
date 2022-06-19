@@ -581,7 +581,7 @@ Usage:
     [-n | --ncores=<num of threads> (8)]
     [-i | --input-class=<input class> (test)]
     [-w | --wait-policy=<omp wait policy> (passive)]
-    [-p | --program=<suite-application-input> (demo-matrix-1)]: Ex. cpu2017-nab-1,cpu2017-bwaves-1
+    [-p | --program=<suite-application-input> (demo-dotproduct-1)]: Ex. demo-matrix-1,cpu2017-bwaves-1
     [--force]: Start a new set of end-to-end run
     [--reuse-profile]: Reuse the profiling data (used along with --force)
     [--reuse-fullsim]: Reuse the full program simulation (used along with --force)

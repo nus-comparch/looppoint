@@ -22,9 +22,13 @@ run-root-cwd:
 run-root:
 	docker run --rm -it -v "${HOME}:${HOME}" $(DOCKER_IMAGE)
 
-apps:
+matrix:
 	make -C apps/demo/matrix-omp
+
+dotproduct:
 	make -C apps/demo/dotproduct-omp
+
+apps: matrix dotproduct
 
 pinkit:
 	@if [ ! -d "tools/pin-3.13-98189-g60a6ef199-gcc-linux" ]; then \

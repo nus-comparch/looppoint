@@ -10,7 +10,10 @@ DOCKER_BUILD_OPT?=
 TZFULL=$(subst /, ,$(shell readlink /etc/localtime))
 TZ=$(word $(shell expr $(words $(TZFULL)) - 1 ),$(TZFULL))/$(word $(words $(TZFULL)),$(TZFULL))
 
-export SDE_BUILD_KIT=${PWD}/tools/sde-external-9.0.0-2021-11-07-lin
+export CC := gcc-9
+export CXX := g++-9
+export SDE_BUILD_KIT := ${PWD}/tools/sde-external-9.0.0-2021-11-07-lin
+
 SNIPER_GIT_REPO?=https://github.com/snipersim/snipersim.git
 
 run:
@@ -72,7 +75,8 @@ BUILD_ALL_TARGETS=$(foreach f,$(DOCKER_FILES),$(f).build)
 build-all: $(BUILD_ALL_TARGETS)
 
 clean:
-	rm -f *.pyc *.info.log  *.log 
+	rm -f *.pyc *.info.log  *.log
+	make -C apps/demo/dotproduct-omp clean
 	make -C apps/demo/matrix-omp clean
 	make -C tools/src/Profiler clean
 	make -C tools/src/Drivers clean

@@ -1,13 +1,13 @@
 # LoopPoint: Checkpoint-driven Sampled Simulation for Multi-threaded Applications (HPCA 2022)
 ## Abstract
 
-In this artifact, we provide the source code needed to replicate the primary experiments 
-demonstrated in the paper. The artifact provides scripts that comprise three parts:
+In this toolchain, we provide the source code needed to replicate the primary experiments 
+demonstrated in the LoopPoint paper. The artifact provides scripts that comprise three parts:
 1. profiling the application that enables multi-threaded sampling; 
 1. sampled simulation of the selected regions;
 1. extrapolation of performance results, and plotting the key results. 
 
-This file describes these parts and how to run them to replicate our experiments.
+This file describes these parts and how to run them.
  
 ## Artifact check-list (meta-information)
  
@@ -33,10 +33,9 @@ This file describes these parts and how to run them to replicate our experiments
 We use SPEC CPU2017 benchmark suite to evaluate the proposed methodology, *LoopPoint*. In this 
 artifact, however, we do not include SPEC CPU2017 binaries and provide a demo application to test
 the end-to-end methodology. The setup can be used to replicate any results that we show in the
-paper. Pin kit and Sniper will be downloaded while setting up the artifact (see Installation section
-for instructions). The tool binaries are provided that works with Intel Pin. The artifact is available 
-on Zenodo with DOI 10.5281/zenodo.5667620. We will be releasing several versions in the future, and 
-therefore we recommend using the latest version available at the DOI.
+paper. SDE/Pin kits and Sniper will be downloaded while setting up the artifact (see Installation section
+for instructions). The tool binaries are provided that works with Intel SDE/Pin. The artifact is available 
+on Zenodo with DOI 10.5281/zenodo.5667620.
 
 ### Hardware dependencies
 The artifact is developed such that it can run on an x86-based Linux machine. We strongly recommend 
@@ -47,21 +46,23 @@ machine.
 ### Software dependencies
 - GNU Make
 - C++11 build toolchain
-- Python2, Python3, numpy, tabulate
+- Python
 - Docker
 
 ### Data sets
-- matrix-omp: A demo application that can be used to test the end-to-end methodology in a reasonable
-amount of time
+We provide two small parallel applications to test the end-to-end methodology of LoopPoint in a 
+reasonable amount of time.
+- dotproduct-omp: A demo application that computes the vector dot product using OpenMP
+- matrix-omp: A demo application that performs matrix multiplication using OpenMP
 
 ## Installation
 
-1. Download the artifact from the Zenodo link and navigate to the artifact base directory
-1. Request for the path to Sniper git repo at https://snipersim.org/w/Download that allows you to download Sniper
-	1. Please provide a valid email address to get the link to the latest Sniper (we use v7.4)
-	1. You will receive a secret link to the Sniper git repo to your email
+1. Clone the repository and navigate to the base directory
+```
+$ git clone https://github.com/nus-comparch/looppoint.git
+```
 1. Follow the below steps to setup and build the artifact once you have the Sniper gitid
-	1. Build the docker image
+	1. Build the docker image (Note that this is a one-time step.)
 	```
 	$ make build
 	```
@@ -69,16 +70,15 @@ amount of time
 	```
 	$ make
 	```
-	3. Build the provided applications
+	3. Build the demo applications
 	```
 	$ make apps
 	```
-	4. Download and build the required tools once you have the Sniper gitid link
+	4. Download and build Sniper and LoopPoint tools
 	```
-	$ make tools SNIPER_GIT_REPO="http://snipersim.org/<path-to-git-repo>.git"
+	$ make tools
 	```
-1. These steps should automatically download the required versions of Pin kit and Sniper, and
-apply the required patches
+1. These steps should automatically download the required versions of SDE/Pin kit and Sniper
 
 ## Experiment workflow
 
@@ -105,7 +105,7 @@ $ ./run-looppoint.py -h
 The arguments are defined as follows:
 * `-p` or `--program`: program to be executed, supplied in the format `<suite>-<application>-<input-num>` \
 Multiple programs can be submitted as comma-separated inputs \
-_Default:_ `demo-matrix-1`
+_Default:_ `demo-dotproduct-1`
 * `-n` or `--ncores`: num of threads \
 _Default:_ `8`
 _Note:_ The demo app has three inputs for test input class and is hard set to work for 8 threads.
@@ -117,13 +117,16 @@ _Default:_ `passive`
 * `--force`: Start a new set of end-to-end run (**Warning**: The full application simulation can take a long time)
 * `--reuse-profile`: Reuse the default profiling data (used along with `--force`)
 * `--reuse-fullsim`: Reuse the default full program simulation (used along with `--force`)
+* `--no-flowcontrol`: Disable thread flowcontrol during profiling
+* `--use-pinplay`: Use PinPlay instead of SDE for profiling
+* `--native`: Run the application natively
 Note that SPEC applications and default results are not included in the open version.
 
 ###### Usage Examples
 ```
-./run-looppoint.py -p demo-matrix-1 -n 8 --force
+./run-looppoint.py -p demo-dotproduct-1 -n 8 --force
 ```
-will start a new set of end-to-end run for `demo-matrix-1` program with `8` cores, using `passive` wait policy and `test` inputs
+will start a new set of end-to-end run for `demo-dotproduct-1` program with `8` cores, using `passive` wait policy and `test` inputs
 
 ```
 ./run-looppoint.py -p demo-matrix-2 -w active -i test --force
@@ -131,9 +134,9 @@ will start a new set of end-to-end run for `demo-matrix-1` program with `8` core
 will start a new set of end-to-end run for `demo-matrix-2` program with `8` cores, using `active` wait policy and `test` inputs
 
 ## Evaluation and expected results
-To replicate the results shown in this paper, it is necessary to run each of the applications in SPEC CPU2017 benchmark suite.
-The users can add any multi-threaded application in a similar fashion (see how the demo application matric-omp is set up) and
-test looppoint infrastructure there. Note that, launching a new set of end-to-end evaluation is long-running for large applications
+To replicate the results shown in the LoopPoint paper, it is necessary to run each of the applications in SPEC CPU2017 benchmark suite.
+The users can add any multi-threaded application in a similar fashion (see how the demo applications are set up) and
+test LoopPoint infrastructure there. Note that, launching a new set of end-to-end evaluation is long-running for large applications
 as the full application simulation can take a long time.
 
 The evaluation of LoopPoint is done for SPEC CPU2017 applications that consume train inputs. While using both 

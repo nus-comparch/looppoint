@@ -1,6 +1,5 @@
 UBUNTU_VERSION?=18.04
 TOOL?=looppoint
-#SNIPER_GIT_REPO?="http://snipersim.org/download/6abd19013a9e7ae0/git/sniper.git"
 DOCKER_IMAGE?=ubuntu:$(UBUNTU_VERSION)-$(TOOL)
 DOCKER_FILE?=Dockerfile-ubuntu-$(UBUNTU_VERSION)
 DOCKER_FILES=$(wildcard Dockerfile*)

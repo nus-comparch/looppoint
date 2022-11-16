@@ -33,9 +33,14 @@ def ex(cmd, cwd = '.'):
   proc.communicate()
 
 def jobsubmit(config, files = [], out_dirs = [], startcmd = []):
-  tmpdir = tempfile.mkdtemp()
+  tmpdir = False
+  if not config['custom_cfg']:
+    target_dir = tempfile.mkdtemp()
+    tmpdir = True
+  else:
+    target_dir = config['bm_path']
   for f in files:
-    os.system('cp %s %s' % (f, tmpdir))
+    os.system('cp %s %s' % (f, target_dir))
 
   lp_base_dir = config['basedir']
   nthreads = config['ncores']
@@ -74,25 +79,33 @@ export PIN_APP_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
   execute_script += '''
 (if [ -x "./postprocess" ]; then "./postprocess" "%(program)s" "%(inputsize)s" "%(nthreads)s" "%(lp_base_dir)s"; fi )
 ''' % locals()
-  file(os.path.join(tmpdir, 'execute.sh'), 'w').write(execute_script)
-  cmd = 'bash %s' % os.path.join(tmpdir, 'execute.sh')
+  file(os.path.join(target_dir, 'execute.sh'), 'w').write(execute_script)
+  cmd = 'bash %s' % os.path.join(target_dir, 'execute.sh')
   if config['logging']:
     os.system('echo "Running commands:" >> %s' % config['log_file'])
     for i_cmd in startcmd:
       os.system('echo "%s" >> %s' % (i_cmd, config['log_file']))
     cmd += ' 2>&1 | tee -a %s' % config['log_file']
-  ex(cmd, cwd = tmpdir)
-  os.system('rm -rf %s' % tmpdir)
+  ex(cmd, cwd = target_dir)
+  if tmpdir:
+    os.system('rm -rf %s' % target_dir)
+  else:
+    os.system('rm -f %s' % os.path.join(target_dir, 'execute.sh'))
   return
 
 def graphite_submit(
     config, graphiteoptions, files, traces = None, run_options = [],
     pinballs = None, startcmd = None, sniper_binary_args = None):
 
-  tmpdir = tempfile.mkdtemp()
+  tmpdir = False
+  if not config['custom_cfg']:
+    target_dir = tempfile.mkdtemp()
+    tmpdir = True
+  else:
+    target_dir = config['bm_path']
 
   for f in files:
-    os.system('cp %s %s' % (f, tmpdir))
+    os.system('cp %s %s' % (f, target_dir))
 
   run_options = ' '.join(run_options)
   lp_base_dir = config['basedir']
@@ -127,7 +140,7 @@ def graphite_submit(
   else:
     return
 
-  file(os.path.join(tmpdir, 'execute.sh'), 'w').write(r'''
+  file(os.path.join(target_dir, 'execute.sh'), 'w').write(r'''
     export GRAPHITE_ROOT=%(sniper_root)s
     export SNIPER_ROOT=%(sniper_root)s
 
@@ -151,12 +164,15 @@ def graphite_submit(
     (if [ -x "./postprocess" ]; then "./postprocess" "%(program)s" "%(inputsize)s" "%(nthreads)s" "%(lp_base_dir)s"; fi )
   ''' % locals())
 
-  cmd = 'bash %s' % os.path.join(tmpdir, 'execute.sh')
+  cmd = 'bash %s' % os.path.join(target_dir, 'execute.sh')
   if config['logging']:
     os.system('echo "Running command:" >> %s' % config['log_file'])
     os.system('echo "%s %s" >> %s' % (startcmd, graphite_extra_opts, config['log_file']))
     cmd += ' 2>&1 | tee -a %s' % config['log_file']
-  ex(cmd, cwd = tmpdir)
-  os.system('rm -rf %s' % tmpdir)
+  ex(cmd, cwd = target_dir)
+  if tmpdir:
+    os.system('rm -rf %s' % target_dir)
+  else:
+    os.system('rm -f %s' % os.path.join(target_dir, 'execute.sh'))
   return
 

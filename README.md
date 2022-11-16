@@ -114,6 +114,8 @@ _Default:_ `test`
 * `-w` or `--wait-policy`: omp wait policy \
 _Options:_ `passive`, `active` \
 _Default:_ `passive`
+* `-c` or `--custom-cfg`: Run a workload of interest using cfg-file in the current directory \
+_Note:_ Cannot be used alongside `-p` or `--program`.
 * `--force`: Start a new set of end-to-end run (**Warning**: The full application simulation can take a long time)
 * `--reuse-profile`: Reuse the default profiling data (used along with `--force`)
 * `--reuse-fullsim`: Reuse the default full program simulation (used along with `--force`)
@@ -133,6 +135,18 @@ will start a new set of end-to-end run for `demo-dotproduct-1` program with `8` 
 ```
 will start a new set of end-to-end run for `demo-matrix-2` program with `8` cores, using `active` wait policy and `test` inputs
 
+###### Running Custom Workloads
+Integrating a new benchmark suite with the LoopPoint setup requires some modifications in the scripts. However, running LoopPoint for an application from it's own directory is straightforward. The flag `--custom-cfg` accepts a config file of the application that the user wants to run. A typical config file (matmul.0.cfg) of an application (matmul-omp) looks like this:
+```
+[Parameters]
+program_name: matmul-omp
+input_name: 1
+command: ./matmul 100 8
+```
+It is necessary to keep the above three fields (program_name, input_name, command) in the config file of the application for it to work with the infrastructure. We also recommend keeping all necessary binaries and the respective inputs of the application in the same directory as that of the config file, as this is where `run-looppoint.py` script looks. The results of the sampling run are stored in the same application directory. Note that, this flag cannot be used along with the flag `--program` as `--program` runs a program that is already integrated with the LoopPoint workflow, whereas `custom-cfg` runs an application of choice. 
+```
+/path/to/looppoint/run-looppoint.py -n 8 -c matmul.0.cfg --force
+```
 ## Evaluation and expected results
 To replicate the results shown in the LoopPoint paper, it is necessary to run each of the applications in SPEC CPU2017 benchmark suite.
 The users can add any multi-threaded application in a similar fashion (see how the demo applications are set up) and

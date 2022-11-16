@@ -60,7 +60,9 @@ def mkdir_p(path):
 def make_mt_pinball(config):
   mkdir_p(os.path.dirname(config['whole_basename']))
   print ("[LOOPPOINT] Generating fat pinball.")
-  files = ['preprocess']
+  files = []
+  if not config['custom_cfg']:
+    files.append('preprocess')
   out_dirs = []
   cmd = '%(tool_sde_pinpoints)s --delete --mode mt --sdehome=%(sde_kit)s ' % config
   if config['use_pinplay']:
@@ -70,7 +72,7 @@ def make_mt_pinball(config):
 
 def gen_dcfg(config):
   print ("[LOOPPOINT] Generating DCFG file.")
-  if not os.path.isfile(config['pintool_looppoint']):
+  if config['use_pinplay'] and not os.path.isfile(config['pintool_looppoint']):
     print ("[LOOPPOINT] Error: LoopPoint tool not found.")
     exit(1)
   wpp_name = glob.glob(config['whole_basename'] + '*.address')
@@ -214,7 +216,9 @@ def run_sniper(config, mtng=True):
   rob_config = False
   dram_perf_qmodel = None
   viz = False
-  files = ['preprocess']
+  files = []
+  if not config['custom_cfg']:
+    files.append('preprocess')
   traces = None
   run_options = []
   pinballs = None
@@ -438,18 +442,37 @@ def bm_to_path(config):
   config['app_cfg'] = cfg_file[0]
   return
 
+def bm_custom_dir(config):
+  config['app_cfg'] = config['custom_cfg']
+  configParser = ConfigParser.ConfigParser()
+  configParser.read(config['app_cfg'])
+  config['bm_name'] = configParser.get('Parameters', 'program_name')
+  config['bm_path'] = config['app_cfg'].rsplit('/', 1)[0]
+  config['bm_suite'] = 'custom'
+  config['bm_fullname'] = config['bm_name']
+  config['bm_input'] = configParser.get('Parameters', 'input_name')
+  return
+
 def add_dependent_config(config):
-  bm_to_path(config)
+  if not config['custom_cfg']:
+    bm_to_path(config)
+  else:
+    bm_custom_dir(config)
   config['bm_param_str'] = '-'.join([ config['bm_suite'], config['bm_name'], config['bm_input'], config['input_class'], config['wait_policy'], config['ncores'] ])
   # output dirs
-  config['output_base_dir_default'] = os.path.join(config['basedir'],'results', config['bm_param_str'] + '-default')
-  config['output_base_dir'] = os.path.join(config['basedir'],'results', config['bm_param_str'] + '-' + time.strftime("%Y%m%d%H%M%S"))
+  if not config['custom_cfg']:
+    config['output_base_dir_default'] = os.path.join(config['basedir'],'results', config['bm_param_str'] + '-default')
+    config['output_base_dir'] = os.path.join(config['basedir'],'results', config['bm_param_str'] + '-' + time.strftime("%Y%m%d%H%M%S"))
+  else:
+    config['output_base_dir_default'] = os.path.join(config['bm_path'], config['bm_param_str'] + '-default')
+    config['output_base_dir'] = os.path.join(config['bm_path'], config['bm_param_str'] + '-' + time.strftime("%Y%m%d%H%M%S"))
+
   config['sim_res_dir_default']  = os.path.join(config['output_base_dir_default'],'simulation')
   config['sim_res_dir']  = os.path.join(config['output_base_dir'],'simulation')
   config['whole_basename'] = os.path.join(config['output_base_dir'], 'whole_program.' + config['bm_input'], config['bm_name'] + '.' + config['bm_input'])
   # regions of size 100M instructions per thread for regular applications and 10M per thread for demo applications
   config['slice_size'] = str(int(config['ncores'])*10000000) if config['bm_suite'] == 'demo' else str(int(config['ncores'])*100000000)
-  if config['input_class'] == 'train' or config['input_class'] == 'C':
+  if config['bm_suite'] != 'demo':
     config['cluster_maxk'] = '50'
 
   # logging
@@ -504,18 +527,25 @@ def create_default_config():
   config['ncores'] = os.getenv('OMP_NUM_THREADS', '8')
 
   config['flowcontrol'] = True
-
+  config['custom_cfg'] = ''
   config['native_run'] = False
 
   return config
 
 def check_dep(config):
-  if not (os.path.exists(config['pin_kit']) and os.path.exists(config['sniper_root'])):
-    print "Error detected while finding Pin kit or Sniper. Double check these paths!"
+  if config['use_pinplay'] and not os.path.exists(config['pin_kit']):
+    print ("Error detected while finding Pin kit. Double check these paths!")
     sys.exit(1)
-
-  if not os.path.isfile(os.path.join(config['pin_kit'],'pin')):
-    raise RuntimeError('Cannot find pin kit at [%s]' % config['pin_kit'])
+  if not (config['use_pinplay'] or os.path.exists(config['sde_kit'])):
+    print ("Error detected while finding SDE kit. Double check these paths!")
+    sys.exit(1)
+  if not os.path.exists(config['sniper_root']):
+    print("Error detected while finding Sniper. Double check these paths!")
+    sys.exit(1)
+  if config['use_pinplay'] and not os.path.isfile(os.path.join(config['pin_kit'],'pin')):
+    raise RuntimeError('Cannot find Pin kit at [%s]' % config['pin_kit'])
+  if not (config['use_pinplay'] or os.path.isfile(os.path.join(config['sde_kit'],'sde'))):
+    raise RuntimeError('Cannot find SDE kit at [%s]' % config['sde_kit'])
   if not os.path.isfile(os.path.join(config['sniper_root'],'run-sniper')):
     raise RuntimeError('Cannot find Sniper at [%s]' % config['sniper_root'])
   if not os.path.isfile(os.path.join(config['sniper_root'],'lib', 'sniper')):
@@ -574,7 +604,7 @@ if __name__ == '__main__':
       print ' ', module.__name__.split('/')[-1] + ':'
       print '   ', ' '.join(module.allbenchmarks())
     print '''
-The tool helps reproduce some of the major results showed in LoopPoint paper.
+The tool runs end-to-end LoopPoint sampling methodology targeting multi-threaded applications.
 Usage:
     run-looppoint.py
     [-h | --help]: Help
@@ -582,20 +612,25 @@ Usage:
     [-i | --input-class=<input class> (test)]
     [-w | --wait-policy=<omp wait policy> (passive)]
     [-p | --program=<suite-application-input> (demo-dotproduct-1)]: Ex. demo-matrix-1,cpu2017-bwaves-1
+    [-c | --custom-cfg=<cfg-file>]: Run a workload of interest using cfg-file in the current directory (See README.md for details)
     [--force]: Start a new set of end-to-end run
     [--reuse-profile]: Reuse the profiling data (used along with --force)
     [--reuse-fullsim]: Reuse the full program simulation (used along with --force)
     [--no-flowcontrol]: Disable thread flowcontrol during profiling
     [--use-pinplay]: Use PinPlay instead of SDE for profiling
-    [--native]: Run the application natively
+    [--native]: Run the application natively (no sampling)
+
+    Example:> ./run-looppoint.py -n 8 -i test -p demo-matrix-1 --force
+    Example:> /path/to/looppoint/run-looppoint.py -n 8 -w active -c matmul.1.cfg --force
     '''
     sys.exit(rc)
 
   update_config = {}
   suite_apps = []
+  custom_cfg = False
   native_run = False
   try:
-    opts, args = getopt.getopt(sys.argv[1:], 'hn:i:p:w:', [ 'help', 'ncores=', 'input-class=', 'wait-policy=', 'program=', 'force', 'reuse-profile', 'reuse-fullsim', 'no-flowcontrol', 'use-pinplay', 'native' ])
+    opts, args = getopt.getopt(sys.argv[1:], 'hn:i:w:p:c:', [ 'help', 'ncores=', 'input-class=', 'wait-policy=', 'program=', 'custom-cfg=', 'force', 'reuse-profile', 'reuse-fullsim', 'no-flowcontrol', 'use-pinplay', 'native' ])
   except getopt.GetoptError, e:
     # print help information and exit:
     print e
@@ -611,6 +646,9 @@ Usage:
       update_config['wait_policy'] = a
     if o == '-p' or o == '--program':
       suite_apps = a.split(',')
+    if o == '-c' or o == '--custom-cfg':
+      update_config['custom_cfg'] = os.path.abspath(a)
+      custom_cfg = True
     if o == '--force':
       update_config['force'] = True
     if o == '--reuse-profile':
@@ -627,6 +665,9 @@ Usage:
       update_config['native_run'] = True
       native_run = True
 
+  if suite_apps and custom_cfg:
+    print('Cannot run a default application (--program) while using --custom-cfg')
+    usage()
   res_tab = []
 
   if suite_apps:

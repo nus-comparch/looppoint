@@ -35,7 +35,7 @@ apps: matrix dotproduct
 pinkit:
 	@if [ ! -d "tools/pin-3.13-98189-g60a6ef199-gcc-linux" ]; then \
 		$(info Downloading Pin) \
-		wget -O - https://software.intel.com/sites/landingpage/pintool/downloads/pin-3.13-98189-g60a6ef199-gcc-linux.tar.gz  --no-check-certificate | tar -xf - -z -C tools/ ; \
+		wget -O - https://snipersim.org/packages/pin-3.13-98189-g60a6ef199-gcc-linux.tar.gz  --no-check-certificate | tar -xf - -z -C tools/ ; \
 		cp -r tools/pinplay tools/pin-3.13-98189-g60a6ef199-gcc-linux/extras/ ; \
 		patch -d tools -p 0 -i pin_alarms.patch ; \
 	fi

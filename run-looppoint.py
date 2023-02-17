@@ -518,7 +518,7 @@ def create_default_config():
   config['app_base'] = os.path.join(config['basedir'], 'apps')
   config['tools_base'] = os.path.join(config['basedir'], 'tools')
   config['pin_kit'] =  os.path.join(config['tools_base'], 'pin-3.13-98189-g60a6ef199-gcc-linux')
-  config['sde_kit'] =  os.path.join(config['tools_base'], 'sde-external-9.0.0-2021-11-07-lin')
+  config['sde_kit'] =  os.path.join(config['tools_base'], 'sde-external-9.14.0-2022-10-25-lin')
   config['sniper_root'] = os.path.join(config['tools_base'], 'sniper')
   config['pinplay'] = os.path.join(config['pin_kit'], 'extras', 'pinplay')
   config['sde_pinplay'] = os.path.join(config['sde_kit'], 'pinplay-scripts')

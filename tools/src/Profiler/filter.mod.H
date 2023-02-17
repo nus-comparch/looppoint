@@ -1,3 +1,5 @@
+// Copyright (C) 2022 Intel Corporation
+// SPDX-License-Identifier: BSD-3-Clause
 /*BEGIN_LEGAL 
 BSD License 
 
@@ -56,7 +58,9 @@ class FILTER_MOD_RTN
                   "Routines to instrument"),
         _rtnExcludeKnob(KNOB_MODE_APPEND, knob_family, prefix+"filter_exclude_rtn", "", 
                   "Routine to NOT instrument") 
-    {}
+    {
+      _activated = false;
+    }
     
     /*! @ingroup FILTER_MOD_RTN
       Activate the filter. Must be done before PIN_StartProgram

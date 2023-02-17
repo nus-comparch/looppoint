@@ -78,7 +78,7 @@ public:
       #endif
    }
 
-   ~TLock()
+   virtual ~TLock()
    {
       delete _lock;
       #ifdef TIME_LOCKS
@@ -86,6 +86,16 @@ public:
       #endif
    }
 
+// to avoid "Freeing freed memory due to missing operator"
+// If it's not expected that class instances are copied, the operator= 
+// should be declared as private. In this case, if an attempt to copy is 
+// made, the compiler produces an error.
+private: 
+   TLock& operator=(const TLock&){
+     return *this;
+   }
+
+public:
    void acquire()
    {
       #ifdef TIME_LOCKS

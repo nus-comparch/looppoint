@@ -1,3 +1,5 @@
+// Copyright (C) 2022 Intel Corporation
+// SPDX-License-Identifier: BSD-3-Clause
 /*BEGIN_LEGAL 
 BSD License 
 
@@ -16,6 +18,7 @@ END_LEGAL */
 #ifndef GLOBAL_ISIMPOINT_INST_H
 #define GLOBAL_ISIMPOINT_INST_H
 
+using namespace std;
 #include "isimpoint_inst.H"
 #include "atomic.hpp"
 #include "filter.mod.H"
@@ -114,6 +117,7 @@ class GLOBALPROFILE : public PROFILE
         CumulativeInstructionCountGlobal._count = 0;
         UnfilteredInstructionCount._count = 0;
         CurrentSliceSizeGlobal._count = slice_size;
+        last_gblock = NULL;
     }
 
     // This the global version
@@ -181,6 +185,15 @@ class GLOBALISIMPOINT : public ISIMPOINT
       _currentIdGlobal = 1;
       threadProfiles = NULL;
       _filterptr = NULL;
+      globalProfile = NULL;
+      threadProfiles = NULL;
+      spinEntryCount = NULL;
+      spinExitCount = NULL;
+      spinActive = NULL;
+      _filterptr = NULL;
+      _vectorPendingGlobal = false;
+      PIN_InitLock(&_slicesLock); 
+      PIN_InitLock(&_globalProfileLock); 
     }
 
     BOOL VectorPendingGlobal()

@@ -1,3 +1,5 @@
+// Copyright (C) 2022 Intel Corporation
+// SPDX-License-Identifier: BSD-3-Clause
 /*BEGIN_LEGAL 
 BSD License 
 
@@ -32,8 +34,6 @@ END_LEGAL */
 #  include <sys/cdefs.h>
 #  if defined (PIN_CRT)
 #    include <unordered_map>
-#  else
-#    include <tr1/unordered_map>
 #  endif 
 #else
 #  include <unordered_map>
@@ -42,7 +42,6 @@ END_LEGAL */
 // We use unordered_map because it is more efficient than map for lookups.
 
 using namespace std;
-using namespace tr1;
 using namespace dcfg_api;
 using namespace dcfg_pin_api;
 using namespace INSTLIB;
@@ -120,6 +119,7 @@ namespace looppoint {
                     // will be on a separate cache line (pad may split cache lines,
                     // but that is ok).
                   _filterptr = NULL;
+                  gisimpointPtr = NULL;
                 }
 
                 // Return input string or 'unknown' if NULL, quoted.

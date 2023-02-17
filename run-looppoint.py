@@ -169,6 +169,14 @@ def get_address_pccount(line, wd):
     return csv_entries[7], csv_entries[10]
   return None, None
 
+def get_image_offset(line, wd):
+  csv_entries = line.split(',')
+  if wd == 'start':
+    return csv_entries[4], csv_entries[5]
+  elif wd == 'end':
+    return csv_entries[8], csv_entries[9]
+  return None, None
+
 def get_regionid(line):
   regionid = line.split(',')[2]
   return regionid
@@ -187,9 +195,9 @@ def get_startsim_parms(sim_config, config):
   sniper_args += ['--trace-args="-sniper:flow 1000"']
   if  ('end_address' in sim_config) and (sim_config['end_address'] != None):
     if sim_config['start_address_count'] == '0':
-      sniper_args += ['-ssimuserroi --roi-script --trace-args="-control stop:address:%(end_address)s:count%(end_address_count)s:global"' % sim_config]
+      sniper_args += ['-ssimuserroi --roi-script --trace-args="%(controller)s stop:address:%(end_image)s+%(end_offset)s:count%(end_address_count)s:global"' % sim_config]
     else:
-      sniper_args += ['-ssimuserroi --roi-script --trace-args="-control start:address:%(start_address)s:count%(start_address_count)s:global" --trace-args="-control stop:address:%(end_address)s:count%(end_address_count)s:global"' % sim_config]
+      sniper_args += ['-ssimuserroi --roi-script --trace-args="%(controller)s start:address:%(start_image)s+%(start_offset)s:count%(start_address_count)s:global" --trace-args="%(controller)s stop:address:%(end_image)s+%(end_offset)s:count%(end_address_count)s:global"' % sim_config]
     sniper_args += ['-gperf_model/fast_forward/oneipc/interval=100']
     sniper_args += ['-ggeneral/inst_mode_init=detailed']
   if ('rob_config' in sim_config) and (sim_config['rob_config'] == True):
@@ -256,13 +264,19 @@ def run_sniper(config, mtng=True):
       regionid = get_regionid(csv_line)
 
       start_address, start_address_count = get_address_pccount(csv_line, 'start')
+      start_image, start_offset = get_image_offset(csv_line, 'start')
       end_address, end_address_count = get_address_pccount(csv_line, 'end')
+      end_image, end_offset = get_image_offset(csv_line, 'end')
       rep_config = {}
       rep_config['arch_cfg'] = arch_cfg
       rep_config['scheduler'] = scheduler
       rep_config['start_address'] = start_address
+      rep_config['start_image'] = start_image
+      rep_config['start_offset'] = start_offset
       rep_config['start_address_count'] = start_address_count
       rep_config['end_address'] = end_address
+      rep_config['end_image'] = end_image
+      rep_config['end_offset'] = end_offset
       rep_config['end_address_count'] = end_address_count
       rep_config['sniper_binary_args'] = sniper_binary_args
       rep_config['regionid'] = 'r%s' % regionid
@@ -271,6 +285,7 @@ def run_sniper(config, mtng=True):
       rep_config['dram_perf_qmodel'] = dram_perf_qmodel
       rep_config['include_mem_latency'] = include_mem_latency
       rep_config['viz'] = viz
+      rep_config['controller'] = '-control' if config['sniper_sde'] else '-pinplay:control'
       flags = get_startsim_parms(rep_config, config)
       graphiteoptions = ''
       if flags:
@@ -522,6 +537,7 @@ def create_default_config():
   config['reuse_profile'] = False
   config['reuse_fullsim'] = False
   config['use_pinplay'] = False
+  config['sniper_sde'] = False
 
   # Number of cores
   config['ncores'] = os.getenv('OMP_NUM_THREADS', '8')

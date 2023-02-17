@@ -25,7 +25,7 @@ This file describes these parts and how to run them.
 | Workflow preparation time  | &asymp;1 day                                                  |
 | Experiment completion time | &asymp;1-4 weeks                                              |
 | Publicly available?        | Zenodo (10.5281/zenodo.5667620)                               |
-| Code licenses              | Academic and Proprietary                                      |
+| Code licenses              | MIT, BSD, Intel Open Source License, Academic			     |
  
 ## Description
 

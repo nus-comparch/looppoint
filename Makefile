@@ -11,7 +11,7 @@ TZ=$(word $(shell expr $(words $(TZFULL)) - 1 ),$(TZFULL))/$(word $(words $(TZFU
 
 export CC := gcc-9
 export CXX := g++-9
-export SDE_BUILD_KIT := ${PWD}/tools/sde-external-9.0.0-2021-11-07-lin
+export SDE_BUILD_KIT := ${PWD}/tools/sde-external-9.14.0-2022-10-25-lin
 
 SNIPER_GIT_REPO?=https://github.com/snipersim/snipersim.git
 
@@ -41,10 +41,10 @@ pinkit:
 	fi
 
 sdekit:
-	@if [ ! -d "tools/sde-external-9.0.0-2021-11-07-lin" ]; then \
+	@if [ ! -d "tools/sde-external-9.14.0-2022-10-25-lin" ]; then \
 		$(info Downloading SDE kit) \
-		wget -O - https://downloadmirror.intel.com/684899/sde-external-9.0.0-2021-11-07-lin.tar.xz  --no-check-certificate | tar -xf - -J -C tools/ ; \
-		cp -r tools/pinplay-scripts tools/sde-external-9.0.0-2021-11-07-lin/ ; \
+		wget -O - https://snipersim.org/packages/sde-external-9.14.0-2022-10-25-lin.tar.xz  --no-check-certificate | tar -xf - -J -C tools/ ; \
+		cp -r tools/pinplay-scripts tools/sde-external-9.14.0-2022-10-25-lin/ ; \
 	fi
 
 looppoint: sdekit
@@ -82,6 +82,6 @@ clean:
 	make -C tools/sniper clean
 
 distclean: clean
-	rm -rf tools/pin-3.13-98189-g60a6ef199-gcc-linux tools/sniper results/ tools/sde-external-9.0.0-2021-11-07-lin
+	rm -rf tools/pin-3.13-98189-g60a6ef199-gcc-linux tools/sniper results/ tools/sde-external-9.14.0-2022-10-25-lin
 
 .PHONY: build build-all run-root run run-cwd apps sdekit pinkit tools clean distclean

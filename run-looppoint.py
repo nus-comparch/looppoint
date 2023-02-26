@@ -487,8 +487,8 @@ def add_dependent_config(config):
   config['whole_basename'] = os.path.join(config['output_base_dir'], 'whole_program.' + config['bm_input'], config['bm_name'] + '.' + config['bm_input'])
   # regions of size 100M instructions per thread for regular applications and 10M per thread for demo applications
   config['slice_size'] = str(int(config['ncores'])*10000000) if config['bm_suite'] == 'demo' else str(int(config['ncores'])*100000000)
-  if config['bm_suite'] != 'demo':
-    config['cluster_maxk'] = '50'
+  if config['bm_suite'] == 'demo':
+    config['cluster_maxk'] = '20'
 
   # logging
   config['log_file'] = os.path.join(os.path.join(config['output_base_dir'], 'looppoint.log.txt'))
@@ -512,7 +512,7 @@ def create_default_config():
   # cluster parameters
   config['warmup_factor'] = '2'
   config['cluster_dim']  = '100'
-  config['cluster_maxk']   = '20'
+  config['cluster_maxk']   = '50'
 
   # tools
   config['app_base'] = os.path.join(config['basedir'], 'apps')

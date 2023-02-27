@@ -499,7 +499,7 @@ def create_default_config():
   config = {}
 
   # application
-  config['bm_name'] = 'dotproduct'
+  config['bm_name'] = 'matrix'
   config['bm_suite'] = 'demo'
   config['bm_input'] = '1'
   config['input_class'] = 'test'
@@ -627,7 +627,7 @@ Usage:
     [-n | --ncores=<num of threads> (8)]
     [-i | --input-class=<input class> (test)]
     [-w | --wait-policy=<omp wait policy> (passive)]
-    [-p | --program=<suite-application-input> (demo-dotproduct-1)]: Ex. demo-matrix-1,cpu2017-bwaves-1
+    [-p | --program=<suite-application-input> (demo-matrix-1)]: Ex. demo-dotproduct-1,cpu2017-bwaves-1
     [-c | --custom-cfg=<cfg-file>]: Run a workload of interest using cfg-file in the current directory (See README.md for details)
     [--force]: Start a new set of end-to-end run
     [--reuse-profile]: Reuse the profiling data (used along with --force)

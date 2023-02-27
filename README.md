@@ -114,10 +114,11 @@ _Default:_ `test`
 _Options:_ `passive`, `active` \
 _Default:_ `passive`
 * `-c` or `--custom-cfg`: Run a workload of interest using cfg-file in the current directory \
-_Note:_ Cannot be used alongside `-p` or `--program`.
+_Note:_ Cannot be used alongside `-p` or `--program`. More details [here](#running-custom-workloads)
 * `--force`: Start a new set of end-to-end run (**Warning**: The full application simulation can take a long time)
 * `--reuse-profile`: Reuse the default profiling data (used along with `--force`)
 * `--reuse-fullsim`: Reuse the default full program simulation (used along with `--force`)
+* `--no-validate`: Skip full program simulation and display only the sampled simulation result (used along with `--force`)
 * `--no-flowcontrol`: Disable thread flowcontrol during profiling
 * `--use-pinplay`: Use PinPlay instead of SDE for profiling
 * `--native`: Run the application natively
@@ -125,14 +126,20 @@ Note that SPEC applications and default results are not included in the open ver
 
 ###### Usage Examples
 ```
-./run-looppoint.py -p demo-dotproduct-1 -n 8 --force
+./run-looppoint.py -p demo-matrix-1 -n 8 --force --no-validate
 ```
-will start a new set of end-to-end run for `demo-dotproduct-1` program with `8` cores, using `passive` wait policy and `test` inputs
+will start a new set of end-to-end run for `demo-matrix-1` program with `8` cores, using `passive` wait policy and `test` inputs \
+without running the full program simulation.
 
 ```
-./run-looppoint.py -p demo-matrix-2 -w active -i test --force
+./run-looppoint.py -p demo-dotproduct-1 -w active -i test --force
 ```
 will start a new set of end-to-end run for `demo-matrix-2` program with `8` cores, using `active` wait policy and `test` inputs
+
+```
+/path/to/looppoint/run-looppoint.py -n 8 -c 603.bwaves-s.1.cfg --force
+```
+will start a new set of end-to-end run for a custom workload `603.bwaves-s.1` program with `8` cores, using the config file `603.bwaves-s.1.cfg`
 
 ###### Running Custom Workloads
 Integrating a new benchmark suite with the LoopPoint setup requires some modifications in the scripts. However, running LoopPoint for an application from it's own directory is straightforward. The flag `--custom-cfg` accepts a config file of the application that the user wants to run. A typical config file (`603.bwaves_s.1.cfg`) of an application (`603.bwaves_s.1`) looks like this:

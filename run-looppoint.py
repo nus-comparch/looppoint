@@ -231,7 +231,7 @@ def run_sniper(config, mtng=True):
   run_options = []
   pinballs = None
   startcmd = None
-  if config['force'] and not config['reuse_fullsim']:
+  if config['validate'] and not config['reuse_fullsim']:
     wp_config = {}
     wp_config['arch_cfg'] = arch_cfg
     wp_config['scheduler'] = scheduler
@@ -358,7 +358,8 @@ def evaluate(config):
   region_stats = {}
   region_config = {}
   region_mult = {}
-  region_stats['wp'], region_config['wp'] = get_sim_res(config, config['sim_res_dir_default'] if config['reuse_fullsim'] else sim_path, profile_path, 'wp')
+  if config['validate']:
+    region_stats['wp'], region_config['wp'] = get_sim_res(config, config['sim_res_dir_default'] if config['reuse_fullsim'] else sim_path, profile_path, 'wp')
   csv_file = glob.glob(profile_path + '/*.global.pinpoints.csv')
   if not csv_file:
     print('[LOOPPOINT] Error: Unable to find cluster information.')
@@ -374,7 +375,6 @@ def evaluate(config):
       except:
         print('[LOOPPOINT] Error: Simulation results not found for r%s' % regionid)
 
-  full_prog_runtime = read_simstats(region_stats['wp'], region_config['wp'], 'runtime')
   extrapolated_runtime = 0.0
   max_rep_runtime = 0.0
   sum_rep_runtime = 0.0
@@ -396,10 +396,15 @@ def evaluate(config):
   coverage = cov_mult/tot_mult
   extrapolated_runtime = extrapolated_runtime/coverage
 
-  speedup_p = full_prog_runtime/max_rep_runtime
-  speedup_s = full_prog_runtime/(sum_rep_runtime/coverage)
+  if config['validate']:
+    full_prog_runtime = read_simstats(region_stats['wp'], region_config['wp'], 'runtime')
+    speedup_p = full_prog_runtime/max_rep_runtime
+    speedup_s = full_prog_runtime/(sum_rep_runtime/coverage)
 
-  tab = [ '%(bm_fullname)s.%(bm_input)s' % config, round(full_prog_runtime, 2), round(extrapolated_runtime, 2), round((1-(extrapolated_runtime/full_prog_runtime))*100, 2), round(speedup_p, 2), round(speedup_s, 2), round(coverage*100, 2) ]
+  if config['validate']:
+    tab = [ '%(bm_fullname)s.%(bm_input)s' % config, round(full_prog_runtime, 2), round(extrapolated_runtime, 2), round((1-(extrapolated_runtime/full_prog_runtime))*100, 2), round(speedup_p, 2), round(speedup_s, 2), round(coverage*100, 2) ]
+  else:
+    tab = [ '%(bm_fullname)s.%(bm_input)s' % config, round(extrapolated_runtime, 2), round(coverage*100, 2) ]
   return tab
 
 def get_app_cmd(config):
@@ -536,6 +541,7 @@ def create_default_config():
   config['force'] = False
   config['reuse_profile'] = False
   config['reuse_fullsim'] = False
+  config['validate'] = True
   config['use_pinplay'] = False
   config['sniper_sde'] = False
 
@@ -628,15 +634,16 @@ Usage:
     [-i | --input-class=<input class> (test)]
     [-w | --wait-policy=<omp wait policy> (passive)]
     [-p | --program=<suite-application-input> (demo-matrix-1)]: Ex. demo-dotproduct-1,cpu2017-bwaves-1
-    [-c | --custom-cfg=<cfg-file>]: Run a workload of interest using cfg-file in the current directory (See README.md for details)
+    [-c | --custom-cfg=<cfg-file>]: Run a workload of interest using cfg-file in the current directory (See README.md)
     [--force]: Start a new set of end-to-end run
     [--reuse-profile]: Reuse the profiling data (used along with --force)
     [--reuse-fullsim]: Reuse the full program simulation (used along with --force)
+    [--no-validate]: Skip full program simulation and display only the sampled simulation result (used along with --force)
     [--no-flowcontrol]: Disable thread flowcontrol during profiling
     [--use-pinplay]: Use PinPlay instead of SDE for profiling
-    [--native]: Run the application natively (no sampling)
+    [--native]: Run the application natively (no sampling/simulation)
 
-    Example:> ./run-looppoint.py -n 8 -i test -p demo-matrix-1 --force
+    Example:> ./run-looppoint.py -n 8 -i test -p demo-matrix-1 --force --no-validate
     Example:> /path/to/looppoint/run-looppoint.py -n 8 -w active -c matmul.1.cfg --force
     '''
     sys.exit(rc)
@@ -645,8 +652,9 @@ Usage:
   suite_apps = []
   custom_cfg = False
   native_run = False
+  validate = True
   try:
-    opts, args = getopt.getopt(sys.argv[1:], 'hn:i:w:p:c:', [ 'help', 'ncores=', 'input-class=', 'wait-policy=', 'program=', 'custom-cfg=', 'force', 'reuse-profile', 'reuse-fullsim', 'no-flowcontrol', 'use-pinplay', 'native' ])
+    opts, args = getopt.getopt(sys.argv[1:], 'hn:i:w:p:c:', [ 'help', 'ncores=', 'input-class=', 'wait-policy=', 'program=', 'custom-cfg=', 'force', 'reuse-profile', 'reuse-fullsim', 'no-validate', 'no-flowcontrol', 'use-pinplay', 'native' ])
   except getopt.GetoptError, e:
     # print help information and exit:
     print e
@@ -668,11 +676,12 @@ Usage:
     if o == '--force':
       update_config['force'] = True
     if o == '--reuse-profile':
-      if update_config['force']:
-        update_config['reuse_profile'] = True
+      update_config['reuse_profile'] = True
     if o == '--reuse-fullsim':
-      if update_config['force']:
-        update_config['reuse_fullsim'] = True
+      update_config['reuse_fullsim'] = True
+    if o == '--no-validate':
+      update_config['validate'] = False
+      validate = False
     if o == '--no-flowcontrol':
       update_config['flowcontrol'] = False
     if o == '--use-pinplay':
@@ -683,6 +692,9 @@ Usage:
 
   if suite_apps and custom_cfg:
     print('Cannot run a default application (--program) while using --custom-cfg')
+    usage()
+  if 'reuse_fullsim' in update_config and update_config['reuse_fullsim'] and not validate:
+    print('Cannot use --reuse-fullsim and --no-validate together')
     usage()
   res_tab = []
 
@@ -702,5 +714,8 @@ Usage:
 
   if not native_run:
     print
-    print (tabulate(res_tab, headers = [ 'application', 'runtime\nactual (ns)', 'runtime\npredicted (ns)', 'error\n(%)', 'speedup\n(parallel)', 'speedup\n(serial)', 'coverage\n(%)' ], tablefmt = 'pretty', floatfmt='.2f', colalign=('left', 'center', 'center', 'center', 'center', 'center', 'center')))
+    if validate:
+      print (tabulate(res_tab, headers = [ 'application', 'runtime\nactual (ns)', 'runtime\npredicted (ns)', 'error\n(%)', 'speedup\n(parallel)', 'speedup\n(serial)', 'coverage\n(%)' ], tablefmt = 'pretty', floatfmt='.2f', colalign=('left', 'center', 'center', 'center', 'center', 'center', 'center')))
+    else:
+      print (tabulate(res_tab, headers = [ 'application', 'runtime\npredicted (ns)', 'coverage\n(%)' ], tablefmt = 'pretty', floatfmt='.2f', colalign=('left', 'center', 'center')))
     print

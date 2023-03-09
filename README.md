@@ -1,8 +1,9 @@
 # LoopPoint: Checkpoint-driven Sampled Simulation for Multi-threaded Applications (HPCA 2022)
 ## Abstract
 
-We provide a set of tools and the sources required to replicate the primary experiments 
-demonstrated in the LoopPoint paper. The workflow comprises of three parts:
+LoopPoint is a sampling methodology applicable to OpenMP-based multi-threaded applications.
+Here, we provide a set of tools and the sources required to replicate the primary experiments 
+demonstrated in the [LoopPoint paper](https://alenks.github.io/pdf/looppoint_hpca2022.pdf). The workflow comprises of three parts:
 1. profiling the application that enables multi-threaded sampling; 
 1. sampled simulation of the selected regions;
 1. extrapolation of performance results, and plotting the key results. 

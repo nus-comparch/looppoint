@@ -34,11 +34,11 @@ if not os.path.isdir(os.path.join(os.path.dirname(__file__), 'tools', 'sniper'))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'tools', 'sniper', 'tools'))
 import sniper_lib, cpistack
 
-def ex(cmd, cwd = '.'):
-  proc = subprocess.Popen([ 'bash', '-c', cmd ], cwd = cwd)
+def ex(cmd, cwd='.'):
+  proc = subprocess.Popen([ 'bash', '-c', cmd ], cwd=cwd)
   proc.communicate()
 
-def ex_log(cmd, config, cwd = '.', logging = True):
+def ex_log(cmd, config, cwd='.', logging=True):
   print ('[command] %s' % cmd)
   if logging:
     cmd += ' 2>&1 | tee -a %(log_file)s' % config
@@ -48,6 +48,21 @@ def log(config, *args):
   fun = sys._getframe(1).f_code.co_name
   ex_log('echo "[%s()] %s"' % (fun, ' '.join(map(str, args))), config)
 
+def ex_env(cmd, config, env, cwd='.', logging=True):
+  print ('[command] %s' % cmd)
+  if logging:
+    cmd += ' 2>&1 | tee -a %(log_file)s' % config
+  proc = subprocess.Popen(cmd, env=env, cwd=cwd, shell=True)
+  proc.communicate()
+
+def ex_res(cmd, config, env, cwd='.', logging=True):
+  print ('[command] %s' % cmd)
+  if logging:
+    cmd += ' 2>&1 | tee -a %(log_file)s' % config
+  proc = subprocess.Popen(cmd, env=env, cwd=cwd, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
+  output=proc.stdout.read()
+  return output
+
 def mkdir_p(path):
   try:
     os.makedirs(path)
@@ -56,6 +71,12 @@ def mkdir_p(path):
       pass
     else:
       raise
+
+def get_app_cmd(config):
+  configParser = ConfigParser.ConfigParser()
+  configParser.read(config['app_cfg'])
+  binary_args = configParser.get('Parameters','command').split('>')[0]
+  return binary_args
 
 def make_mt_pinball(config):
   mkdir_p(os.path.dirname(config['whole_basename']))
@@ -75,41 +96,69 @@ def gen_dcfg(config):
   if config['use_pinplay'] and not os.path.isfile(config['pintool_looppoint']):
     print ("[LOOPPOINT] Error: LoopPoint tool not found.")
     exit(1)
-  wpp_name = glob.glob(config['whole_basename'] + '*.address')
-  if not wpp_name:
-    print ("[LOOPPOINT] Error: Whole-program pinball not found.")
-    exit(1)
-  wpp_basename = wpp_name[-1].rsplit('.', 1)[0]
-  update_config = {}
-  update_config['wpp_basename'] = wpp_basename
-  update_config['wpp_dir'] = update_config['wpp_basename'].rsplit('/', 1)[0]
-  config.update(update_config)
+  if not config['binary_profile']:
+    wpp_name = glob.glob(config['whole_basename'] + '*.address')
+    if not wpp_name:
+      print ("[LOOPPOINT] Error: Whole-program pinball not found.")
+      exit(1)
+    wpp_basename = wpp_name[-1].rsplit('.', 1)[0]
+    update_config = {}
+    update_config['wpp_basename'] = wpp_basename
+    update_config['wpp_dir'] = update_config['wpp_basename'].rsplit('/', 1)[0]
+    config.update(update_config)
   files = []
   outdirs = []
-  cmd = '%(sdetool_replay)s --pintool=%(sdetool_dcfg)s ' % config
-  if config['use_pinplay']:
-    cmd = '%(tool_replay)s --pintool=%(pintool_looppoint)s ' % config
-  cmd += ' --pintool_options "-dcfg -replay:deadlock_timeout 0 -replay:strace -dcfg:out_base_name %(wpp_basename)s" %(wpp_basename)s' % config
-  print ("[LOOPPOINT] Running cmd ",cmd)
+
+  if not config['binary_profile']:
+    cmd = '%(sdetool_replay)s --pintool=%(sdetool_dcfg)s ' % config
+    if config['use_pinplay']:
+      cmd = '%(tool_replay)s --pintool=%(pintool_looppoint)s ' % config
+    cmd += ' --pintool_options "-dcfg -replay:deadlock_timeout 0 -replay:strace -dcfg:out_base_name %(wpp_basename)s" %(wpp_basename)s' % config
+  else:
+    if not config['custom_cfg']:
+      files.append('preprocess')
+    update_config = {}
+    update_config['wpp_dir'] = os.path.dirname(config['whole_basename'])
+    config.update(update_config)
+    mkdir_p(config['wpp_dir'])
+    cmd = '%(sde64)s -t %(sdetool_looppoint)s -dcfg -dcfg:out_base_name %(wpp_dir)s/dcfg-out -- ' % config
+    cmd += get_app_cmd(config)
+
+  print ("[LOOPPOINT] Running cmd %s" %cmd)
   lplib.jobsubmit(config, files = files, out_dirs = outdirs, startcmd = [cmd])
 
 def gen_bbv(config):
   print ("[LOOPPOINT] Profiling for BBV Generation.")
-  dcfg_file = glob.glob(config['wpp_basename'] + '*.dcfg.json.bz2')
+  dcfg_file = glob.glob(config['wpp_dir'] + '/*.dcfg.json.bz2')
   if not dcfg_file:
     print ("[LOOPPOINT] Error: DCFG file not found.")
     exit(1)
   config['dcfg_file'] = dcfg_file[-1]
+  files = []
+  outdirs = []
 
-  cmd = '%(tool_sde_pinpoints)s --pintool="%(sdetool_looppoint)s" --sdehome=%(sde_kit)s ' % config
-  if config['use_pinplay']:
-    cmd = '%(tool_pinpoints)s --pintool="%(pintool_looppoint)s" ' % config
+  if not config['binary_profile']:
+    cmd = '%(tool_sde_pinpoints)s --pintool="%(sdetool_looppoint)s" --sdehome=%(sde_kit)s ' % config
+    if config['use_pinplay']:
+      cmd = '%(tool_pinpoints)s --pintool="%(pintool_looppoint)s" ' % config
 
-  cmd += ' --global_regions --pccount_regions --cfg %(app_cfg)s --whole_pgm_dir %(wpp_dir)s --mode mt -S %(slice_size)s -b --replay_options "-replay:deadlock_timeout 0 -global_profile -emit_vectors 0 -filter_exclude_lib libgomp.so.1 -filter_exclude_lib libiomp5.so  -looppoint:global_profile -looppoint:dcfg-file %(dcfg_file)s -looppoint:main_image_only 1 -looppoint:loop_info %(bm_name)s.%(bm_input)s.loop_info.txt' % config
-  if config['flowcontrol']:
-    cmd += ' -flowcontrol:verbose 1 -flowcontrol:quantum 1000000 -flowcontrol:maxthreads %(ncores)s' % config
-  cmd += '"'
-  ex_log(cmd, config, cwd = config['output_base_dir'])
+    cmd += ' --global_regions --pccount_regions --cfg %(app_cfg)s --whole_pgm_dir %(wpp_dir)s --mode mt -S %(slice_size)s -b --replay_options "-replay:deadlock_timeout 0 -global_profile -emit_vectors 0 -filter_exclude_lib libgomp.so.1 -filter_exclude_lib libiomp5.so  -looppoint:global_profile -looppoint:dcfg-file %(dcfg_file)s -looppoint:main_image_only 1 -looppoint:loop_info %(bm_name)s.%(bm_input)s.loop_info.txt' % config
+    if config['flowcontrol']:
+      cmd += ' -flowcontrol:verbose 1 -flowcontrol:quantum 1000000 -flowcontrol:maxthreads %(ncores)s' % config
+    cmd += '"'
+    ex_log(cmd, config, cwd = config['output_base_dir'])
+  else:
+    if not config['custom_cfg']:
+      files.append('preprocess')
+    data_dir = os.path.join(config['output_base_dir'], '%(bm_name)s.%(bm_input)s_%(pid)s.Data' % config)
+    mkdir_p(data_dir)
+    config['data_dir'] = data_dir
+    cmd = '%(sde64)s  -t %(sdetool_looppoint)s  -global_profile -emit_vectors 0 -filter_exclude_lib libgomp.so.1 -filter_exclude_lib libiomp5.so  -looppoint:global_profile -looppoint:dcfg-file %(dcfg_file)s -looppoint:main_image_only 1 -looppoint:loop_info %(bm_name)s.%(bm_input)s.loop_info.txt -bbprofile -slice_size %(slice_size)s -o  %(data_dir)s/%(bm_name)s.%(bm_input)s_%(pid)s -log:mt 1' % config
+    if config['flowcontrol']:
+      cmd += ' -flowcontrol:verbose 1 -flowcontrol:quantum 1000000 -flowcontrol:maxthreads %(ncores)s' % config
+    cmd += ' -- %s' % (get_app_cmd(config))
+    print ("[LOOPPOINT] Running cmd %s" %cmd)
+    lplib.jobsubmit(config, files = files, out_dirs = outdirs, startcmd = [cmd])
 
   # Concatenation of BBVs
   data_dir = glob.glob(config['output_base_dir'] + '/*.Data')
@@ -149,17 +198,32 @@ def gen_bbv(config):
 
 def gen_cluster(config):
   print ("[LOOPPOINT] Clustering the BBVs.")
-  cmd = '%(tool_sde_pinpoints)s --pintool="sde-global-looppoint.so" ' % config
-  if config['use_pinplay']:
-    cmd = '%(tool_pinpoints)s ' % config
-  cmd += ' --global_regions --pccount_regions --cfg %(app_cfg)s --whole_pgm_dir %(wpp_dir)s -S %(slice_size)s --warmup_factor=%(warmup_factor)s --maxk=%(cluster_maxk)s --dimensions=%(cluster_dim)s --append_status -s' % config
-  cmd += ' --simpoint_options="'
-  if config['cluster_dim']:
-    cmd += ' -dim %(cluster_dim)s' % config
-  if config['cluster_maxk']:
-    cmd += ' -coveragePct 1.0 -maxK %(cluster_maxk)s '% config
-  cmd += '"'
-  ex_log(cmd, config, cwd = config['output_base_dir'])
+  if not config['binary_profile']:
+    cmd = '%(tool_sde_pinpoints)s --pintool="sde-global-looppoint.so" ' % config
+    if config['use_pinplay']:
+      cmd = '%(tool_pinpoints)s ' % config
+    cmd += ' --global_regions --pccount_regions --cfg %(app_cfg)s --whole_pgm_dir %(wpp_dir)s -S %(slice_size)s --warmup_factor=%(warmup_factor)s --maxk=%(cluster_maxk)s --dimensions=%(cluster_dim)s --append_status -s' % config
+    cmd += ' --simpoint_options="'
+    if config['cluster_dim']:
+      cmd += ' -dim %(cluster_dim)s' % config
+    if config['cluster_maxk']:
+      cmd += ' -coveragePct 1.0 -maxK %(cluster_maxk)s '% config
+    cmd += '"'
+    ex_log(cmd, config, cwd = config['output_base_dir'])
+  else:
+    cmd1 = '%(sde_pinplay)s/PinPointsHome/Linux/bin/simpoint -loadFVFile %(bb_basename)s.global.bb -saveSimpoints %(data_dir)s/t.simpoints -saveSimpointWeights %(data_dir)s/t.weights -saveLabels %(data_dir)s/t.labels -verbose 1' % config
+    if config['cluster_dim']:
+      cmd1 += ' -dim %(cluster_dim)s' % config
+    if config['cluster_maxk']:
+      cmd1 += ' -coveragePct 1.0 -maxK %(cluster_maxk)s '% config
+    env = os.environ.copy()
+    simpt_path = os.path.join(config['sde_pinplay'], 'PinPointsHome/Linux/bin')
+    env['PATH'] = '%s:%s:%s'%(simpt_path, config['sde_pinplay'], env['PATH'])
+    ex_env(cmd1, config, env, cwd = config['output_base_dir'])
+    cmd2 = '%(sde_pinplay)s/pcregions.py  --warmup_factor %(warmup_factor)s --tid global --bbv_file %(bb_basename)s.global.bb --region_file %(data_dir)s/t.simpoints --weight_file %(data_dir)s/t.weights --label_file %(data_dir)s/t.labels' % config
+    csv_content = ex_res(cmd2, config, env, cwd = config['output_base_dir'])
+    csvfile = open ('%(bb_basename)s.global.pinpoints.csv' % config, 'w+')
+    csvfile.write(csv_content)
 
 def get_address_pccount(line, wd):
   csv_entries = line.split(',')
@@ -407,12 +471,6 @@ def evaluate(config):
     tab = [ '%(bm_fullname)s.%(bm_input)s' % config, round(extrapolated_runtime, 2), round(coverage*100, 2) ]
   return tab
 
-def get_app_cmd(config):
-  configParser = ConfigParser.ConfigParser()
-  configParser.read(config['app_cfg'])
-  binary_args = configParser.get('Parameters','command').split('>')[0]
-  return binary_args
-
 def run_native(config):
   print ('[LOOPPOINT] Running %(bm_fullname)s.%(bm_input)s natively using %(input_class)s input class and %(wait_policy)s OMP wait policy' % config)
   files = ['preprocess']
@@ -524,6 +582,7 @@ def create_default_config():
   config['tools_base'] = os.path.join(config['basedir'], 'tools')
   config['pin_kit'] =  os.path.join(config['tools_base'], 'pin-3.13-98189-g60a6ef199-gcc-linux')
   config['sde_kit'] =  os.path.join(config['tools_base'], 'sde-external-9.14.0-2022-10-25-lin')
+  config['sde64'] =  os.path.join(config['sde_kit'], 'sde64')
   config['sniper_root'] = os.path.join(config['tools_base'], 'sniper')
   config['pinplay'] = os.path.join(config['pin_kit'], 'extras', 'pinplay')
   config['sde_pinplay'] = os.path.join(config['sde_kit'], 'pinplay-scripts')
@@ -544,6 +603,7 @@ def create_default_config():
   config['validate'] = True
   config['use_pinplay'] = False
   config['sniper_sde'] = False
+  config['binary_profile'] = False
 
   # Number of cores
   config['ncores'] = os.getenv('OMP_NUM_THREADS', '8')
@@ -551,6 +611,7 @@ def create_default_config():
   config['flowcontrol'] = True
   config['custom_cfg'] = ''
   config['native_run'] = False
+  config['pid'] = str(os.getpid())
 
   return config
 
@@ -603,7 +664,8 @@ def run(app_cmd, update_config, res_tab=[]):
   if config['force']:
     setup_output_dir(config)
     if not config['reuse_profile']:
-      make_mt_pinball(config)
+      if not config['binary_profile']:
+        make_mt_pinball(config)
       gen_dcfg(config)
       gen_bbv(config)
       gen_cluster(config)
@@ -641,6 +703,7 @@ Usage:
     [--no-validate]: Skip full program simulation and display only the sampled simulation result (used along with --force)
     [--no-flowcontrol]: Disable thread flowcontrol during profiling
     [--use-pinplay]: Use PinPlay instead of SDE for profiling
+    [--binary-profile]: Use the application binary for analysis instead of deterministic analysis with Pinballs
     [--native]: Run the application natively (no sampling/simulation)
 
     Example:> ./run-looppoint.py -n 8 -i test -p demo-matrix-1 --force --no-validate
@@ -654,7 +717,7 @@ Usage:
   native_run = False
   validate = True
   try:
-    opts, args = getopt.getopt(sys.argv[1:], 'hn:i:w:p:c:', [ 'help', 'ncores=', 'input-class=', 'wait-policy=', 'program=', 'custom-cfg=', 'force', 'reuse-profile', 'reuse-fullsim', 'no-validate', 'no-flowcontrol', 'use-pinplay', 'native' ])
+    opts, args = getopt.getopt(sys.argv[1:], 'hn:i:w:p:c:', [ 'help', 'ncores=', 'input-class=', 'wait-policy=', 'program=', 'custom-cfg=', 'force', 'reuse-profile', 'reuse-fullsim', 'no-validate', 'no-flowcontrol', 'use-pinplay', 'binary-profile', 'native' ])
   except getopt.GetoptError, e:
     # print help information and exit:
     print e
@@ -686,6 +749,8 @@ Usage:
       update_config['flowcontrol'] = False
     if o == '--use-pinplay':
       update_config['use_pinplay'] = True
+    if o == '--binary-profile':
+      update_config['binary_profile'] = True
     if o == '--native':
       update_config['native_run'] = True
       native_run = True

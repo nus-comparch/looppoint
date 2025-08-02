@@ -1,9 +1,10 @@
-# LoopPoint: Checkpoint-driven Sampled Simulation for Multi-threaded Applications (HPCA 2022)
+# LoopPoint Methodology
 ## Abstract
 
 LoopPoint is a sampling methodology applicable to OpenMP-based multi-threaded applications.
 Here, we provide a set of tools and the sources required to replicate the primary experiments 
-demonstrated in the [LoopPoint paper](https://alenks.github.io/pdf/looppoint_hpca2022.pdf). The workflow comprises of three parts:
+demonstrated in the [LoopPoint paper](https://alenks.github.io/pdf/looppoint_hpca2022.pdf) 
+published at HPCA 2022. The workflow comprises of three parts:
 1. profiling the application that enables multi-threaded sampling; 
 1. sampled simulation of the selected regions;
 1. extrapolation of performance results, and plotting the key results. 
@@ -15,9 +16,9 @@ This file describes these parts and how to run them.
 | Parameter                  | Value                                                         |
 |:---------------------------|---------------------------------------------------------------|
 | Program                    | C++ program and Python/shell scripts                          |
-| Compilation                | C++11 compiler                                                |
+| Compilation                | C++17 compiler                                                |
 | Benchmarks                 | Any multi-threaded benchmark suite                            |
-| Run-time environment       | Ubuntu 18.04, Docker                                          |
+| Run-time environment       | Ubuntu 24.04, Docker                                          |
 | Hardware                   | x86-based Linux machine                                       |
 | Output                     | Plain text, tables                                            |
 | Experiments                | Run profiling, run simulations, and run extrapolation scripts |
@@ -26,7 +27,7 @@ This file describes these parts and how to run them.
 | Workflow preparation time  | &asymp;1 day                                                  |
 | Experiment completion time | &asymp;1-2 days                                               |
 | Publicly available?        | Zenodo (10.5281/zenodo.5667620)                               |
-| Code licenses              | MIT, BSD, Intel Open Source License, Academic		     |
+| Code licenses              | MIT, BSD, Intel Open Source License, Academic		         |
  
 ## Description
 
@@ -45,8 +46,8 @@ machine.
 
 ### Software dependencies
 - GNU Make
-- C++11 build toolchain
-- Python
+- C++17 build toolchain
+- Python3
 - Docker
 
 ### Data sets

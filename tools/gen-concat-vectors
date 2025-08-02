@@ -2,7 +2,7 @@
 # BEGIN_LEGAL
 # The MIT License (MIT)
 #
-# Copyright (c) 2022, National University of Singapore
+# Copyright (c) 2025, National University of Singapore
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -23,186 +23,274 @@
 # SOFTWARE.
 # END_LEGAL
 
-import sys, os, collections
+import sys
+import os
+import collections
 from functools import reduce
 import numpy as np
-
-num_threads = 8
-
-if len(sys.argv) <= 1:
-  print("invalid sys.argv", sys.argv)
-  sys.exit(1)
-
-basename = sys.argv[1]
-print('Using basename = [%s]' % basename)
-
-out_basename = basename
-if len(sys.argv) >= 3:
-  num_threads = int(sys.argv[2])
-  print ('Number of threads = [%d]' % num_threads)
-  if len(sys.argv) > 3:
-    out_basename = sys.argv[3]
-    print ('Using output basename = [%s]' % out_basename)
-
-files = []
-out = []
-for f in range(num_threads):
-  if os.path.exists("%s.T.%s.bb" % (basename,f)):
-    files.append(open("%s.T.%s.bb" % (basename,f), "r"))
-  else: 
-    # Some applications spawn fewer num of threads than requested
-    num_threads = f
-    break
+from typing import Dict, List, Tuple, Optional
 
 
-# For each T line
-max_bbv = int(-1)
-thread_line_count = [int(0)]*num_threads
-while True:
-  end_of_file = [False]*num_threads
-  # for each file
-  for f in range(num_threads):
-    # for each line
-    while True:
-      line = files[f].readline()
-      if line == "":
-        end_of_file[f] = True
+class BBVConcat:
+  def __init__(self, basename: str, num_threads: int = 8, out_basename: Optional[str] = None):
+    self.basename = basename
+    self.num_threads = num_threads
+    self.out_basename = out_basename or basename
+    self.max_bb = -1
+    self.bb_pieces = {}
+    self.global_icount_marker = 0
+    self.unfiltered_icount_marker = 0
+    self.marker_dict = {}
+    self.pcmarker_dict = {}
+    self.globalbb_init_str = []
+    self.log_messages = []
+  
+  def _log(self, message: str):
+    self.log_messages.append(message)
+    print(message)
+  
+  def _find_threads(self) -> int:
+    count = 0
+    for f in range(self.num_threads):
+      if os.path.exists(f"{self.basename}.T.{f}.bb"):
+        count += 1
+      else:
         break
-      if line and line.startswith('T:'):
-        thread_line_count[f] += 1;
-        max_vals = map(lambda x:int(x.split(':')[1]), filter(lambda x:x, line[1:].rstrip().split(' ')))
-        max_bbv_tmp = max(max_vals)
-        max_bbv = max(max_bbv, max_bbv_tmp)
-        break
-  if reduce(lambda x,y:x and y, end_of_file):
-    break
-  # There can be some threads that end early.
-
-print('max_bbv', max_bbv)
-
-files = []
-out = []
-for f in range(num_threads):
-  files.append(open("%s.T.%s.bb" % (basename,f), "r"))
-out.append(open("%s.global.cv" % (out_basename,), "w"))
-log = open("%s.log.cv" % (out_basename,), "w")
-
-bb_pieces = {}
-global_icount_marker = 0
-unfiltered_icount_marker = 0
-marker_dict = {}
-pcmarker_dict = {}
-globalbb_init_str = []
-
-# For each T line
-thread_line_count = [int(0)]*num_threads
-while True:
-  end_of_file = [False]*num_threads
-  # for each file
-  thread_icounts = [int(0)]*num_threads
-  for f in range(num_threads):
-    # for each line
-    while True:
-      line = files[f].readline()
-      if line == "":
-        end_of_file[f] = True
-        break
-      if line and line.startswith('# Slice ending') and 'global' in line:
-          global_icount_marker = int(line.split()[-1])
-      elif line and line[0] == 'T':
-        thread_line_count[f] += 1;
-        if global_icount_marker not in bb_pieces:
-            bb_pieces[global_icount_marker] = {}
-        bb_pieces[global_icount_marker][f] = np.array(list(map(lambda x:':%s:%s'%x, map(lambda x:(int(x.split(':')[1])+(max_bbv*f),int(x.split(':')[2])), filter(lambda x:x, line[1:].rstrip().split(' '))))))
-        break
-  if reduce(lambda x,y:x and y, end_of_file):
-    break
-
-global_fn_bkp = basename + '.global.bb.bkp'
-global_fn = basename + '.global.bb'
-if not os.path.isfile(global_fn_bkp) and os.path.exists(global_fn):
-    print('Found global BBV file [%s]' % (global_fn))
-else:
-    global_fn = global_fn_bkp
-
-final_pcmarker = ''
-try:
-  with open(global_fn, 'r') as global_in:
-    curr_pcmarker = ''
-    for line in global_in:
-      if line and line.startswith('# Slice ending at global'):
-        global_icount_marker = int(line.split()[-1])
-        pcmarker_dict[global_icount_marker] = curr_pcmarker
-        curr_pcmarker = ''
-      elif line and line.startswith('# Unfiltered count'):
-        unfiltered_icount_marker = int(line.split()[-1])
-        marker_dict[global_icount_marker] = unfiltered_icount_marker
-      elif line and line.startswith('S:'):
-        curr_pcmarker = line
-      elif line and (line.startswith('G:') or line.startswith('I:') or line.startswith('C:') or line.startswith('M:')):
-        globalbb_init_str.append(line)
-    if curr_pcmarker:
-      final_pcmarker = curr_pcmarker
-except IOError as e:
-  err_str = '[LOOPPOINT] Unable to open the global BBV file: [%s]' % global_fn
-  print(err_str)
-  log.write(err_str)
-
-f_thread_ins = open("%s.threadins.csv" % (out_basename,), "w")
-ordered_bb_pieces = collections.OrderedDict(sorted(bb_pieces.items()))
-
-if globalbb_init_str:
-  for line in globalbb_init_str:
-    out[0].write('%s' % line)
-
-for k,v in ordered_bb_pieces.items():
-    if pcmarker_dict[k]:
-      out[0].write(pcmarker_dict[k])
-    out[0].write('# Slice ending at global %s\n' % str(k))
-    out[0].write('# Unfiltered count %s\n' % (str(marker_dict[k]) if k in marker_dict else str(k)))
-    out[0].write('T')
+    return count
+  
+  def _calc_max_bb(self) -> int:
+    max_bb = -1
+    threads = self._find_threads()
     
-    ordered_thread_bb_pieces = collections.OrderedDict(sorted(ordered_bb_pieces[k].items()))
-    thread_ins_contri = [0.0] * num_threads
-    tot_ins = 0
-    for k1, v1 in ordered_thread_bb_pieces.items():
-        th_ins = sum([int(el.split(':')[-1]) for el in v1])
-        tot_ins += th_ins
-        thread_ins_contri[k1] = th_ins
-        if len(ordered_thread_bb_pieces[k1]) == 0:
-          continue
-        out[0].write(' '.join(ordered_thread_bb_pieces[k1]))
-        out[0].write(' ')
-    out[0].write('\n')
+    files = []
+    try:
+      for f in range(threads):
+        files.append(open(f"{self.basename}.T.{f}.bb", "r"))
+      
+      while True:
+        eof = [False] * threads
+        
+        for f in range(threads):
+          while True:
+            line = files[f].readline()
+            if line == "":
+              eof[f] = True
+              break
+            if line and line.startswith('T:'):
+              max_vals = map(lambda x: int(x.split(':')[1]), 
+                           filter(lambda x: x, line[1:].rstrip().split(' ')))
+              max_bb = max(max_bb, max(max_vals))
+              break
+        
+        if all(eof):
+          break
     
-    if tot_ins == 0:
-        err_str = '[LOOPPOINT] Found slice without instructions, icounts: %s' % str(k)
-        print (err_str)
-        log.write(err_str)
+    finally:
+      for f in files:
+        f.close()
+    
+    return max_bb
+  
+  def _read_threads(self) -> Dict:
+    bb_pieces = {}
+    threads = self._find_threads()
+    
+    files = []
+    try:
+      for f in range(threads):
+        files.append(open(f"{self.basename}.T.{f}.bb", "r"))
+      
+      while True:
+        eof = [False] * threads
+        
+        for f in range(threads):
+          while True:
+            line = files[f].readline()
+            if line == "":
+              eof[f] = True
+              break
+            if line and line.startswith('# Slice ending') and 'global' in line:
+              self.global_icount_marker = int(line.split()[-1])
+            elif line and line[0] == 'T':
+              if self.global_icount_marker not in bb_pieces:
+                bb_pieces[self.global_icount_marker] = {}
+              
+              data = list(map(
+                lambda x: f':{int(x.split(":")[1]) + (self.max_bb * f)}:{x.split(":")[2]}',
+                filter(lambda x: x, line[1:].rstrip().split(' '))
+              ))
+              bb_pieces[self.global_icount_marker][f] = np.array(data)
+              break
+        
+        if all(eof):
+          break
+    
+    finally:
+      for f in files:
+        f.close()
+    
+    return bb_pieces
+  
+  def _read_global(self) -> Tuple[str, bool]:
+    global_fn = f"{self.basename}.global.bb"
+    global_bkp = f"{self.basename}.global.bb.bkp"
+    
+    if not os.path.isfile(global_bkp) and os.path.exists(global_fn):
+      self._log(f'Found global BBV file [{global_fn}]')
     else:
-        f_thread_ins.write( ','.join([ str(round(el/tot_ins, 3)) for el in thread_ins_contri ]) )
-        f_thread_ins.write('\n')
+      global_fn = global_bkp
     
-    # In this version, it is okay to not have all thread data lengths be the same
-    #for f in range(7):
-    #  assert(thread_line_count[f] == thread_line_count[f+1])
+    final_pc = ''
+    success = True
+    
+    try:
+      with open(global_fn, 'r') as f:
+        curr_pc = ''
+        for line in f:
+          if line and line.startswith('# Slice ending at global'):
+            self.global_icount_marker = int(line.split()[-1])
+            self.pcmarker_dict[self.global_icount_marker] = curr_pc
+            curr_pc = ''
+          elif line and line.startswith('# Unfiltered count'):
+            self.unfiltered_icount_marker = int(line.split()[-1])
+            self.marker_dict[self.global_icount_marker] = self.unfiltered_icount_marker
+          elif line and line.startswith('S:'):
+            curr_pc = line
+          elif line and (line.startswith('G:') or line.startswith('I:') or 
+                       line.startswith('C:') or line.startswith('M:')):
+            self.globalbb_init_str.append(line)
+        
+        if curr_pc:
+          final_pc = curr_pc
+    
+    except IOError as e:
+      err_str = f'[LOOPPOINT] Unable to open the global BBV file: [{global_fn}]'
+      self._log(err_str)
+      success = False
+    
+    return final_pc, success
+  
+  def _write_files(self, bb_pieces: Dict, final_pc: str):
+    with open(f"{self.out_basename}.global.cv", "w") as out_f, \
+         open(f"{self.out_basename}.threadins.csv", "w") as ins_f:
+      
+      ordered = collections.OrderedDict(sorted(bb_pieces.items()))
+      
+      if self.globalbb_init_str:
+        for line in self.globalbb_init_str:
+          out_f.write(f'{line}')
+      
+      for k, v in ordered.items():
+        if k in self.pcmarker_dict and self.pcmarker_dict[k]:
+          out_f.write(self.pcmarker_dict[k])
+        
+        out_f.write(f'# Slice ending at global {str(k)}\n')
+        out_f.write(f'# Unfiltered count {str(self.marker_dict.get(k, k))}\n')
+        out_f.write('T')
+        
+        ordered_threads = collections.OrderedDict(sorted(v.items()))
+        thread_ins = [0.0] * self.num_threads
+        total_ins = 0
+        
+        for k1, v1 in ordered_threads.items():
+          ins = sum([int(el.split(':')[-1]) for el in v1])
+          total_ins += ins
+          thread_ins[k1] = ins
+          
+          if len(v1) > 0:
+            out_f.write(' '.join(v1))
+            out_f.write(' ')
+        
+        out_f.write('\n')
+        
+        if total_ins == 0:
+          err_str = f'[LOOPPOINT] Found slice without instructions, icounts: {str(k)}'
+          self._log(err_str)
+        else:
+          ins_f.write(','.join([str(round(el/total_ins, 3)) for el in thread_ins]))
+          ins_f.write('\n')
+      
+      if final_pc:
+        out_f.write(final_pc)
+        out_f.write('\n')
+      
+      self._append_global(out_f)
+  
+  def _append_global(self, out_f):
+    global_fn = f"{self.basename}.global.bb"
+    global_bkp = f"{self.basename}.global.bb.bkp"
+    
+    if not os.path.isfile(global_bkp) and os.path.exists(global_fn):
+      pass  # Use global_fn
+    else:
+      global_fn = global_bkp
+    
+    try:
+      with open(global_fn, 'r') as f:
+        for line in f:
+          if 'Dynamic instruction count' in line:
+            break
+        
+        out_f.write(line)
+        for line in f:
+          out_f.write(line)
+    
+    except IOError as e:
+      err_str = f'[LOOPPOINT] Unable to open the global BBV file: [{global_fn}]'
+      self._log(err_str)
+  
+  def process(self) -> bool:
+    try:
+      self.num_threads = self._find_threads()
+      self._log(f'Number of threads = [{self.num_threads}]')
+      
+      if self.num_threads == 0:
+        self._log('No thread files found!')
+        return False
+      
+      # Calculate max BB
+      self.max_bb = self._calc_max_bb()
+      self._log(f'max_bb {self.max_bb}')
+      
+      bb_pieces = self._read_threads()
+      final_pc, global_ok = self._read_global()
+      self._write_files(bb_pieces, final_pc)
+      with open(f"{self.out_basename}.log.cv", "w") as log_f:
+        for message in self.log_messages:
+          log_f.write(message + '\n')
+      
+      return True
+    
+    except Exception as e:
+      self._log(f'Error during processing: {str(e)}')
+      return False
 
-if final_pcmarker:
-  out[0].write(final_pcmarker)
-  out[0].write('\n')
+def process_bbv(basename: str, num_threads: int = 8, out_basename: Optional[str] = None) -> bool:
+  bbv_concat = BBVConcat(basename, num_threads, out_basename)
+  return bbv_concat.process()
 
-try:
-  with open(global_fn, 'r') as global_in:
-    for line in global_in:
-      if 'Dynamic instruction count' in line:
-        break
-    out[0].write(line)
-    for line in global_in:
-      out[0].write(line)
-except IOError as e:
-  err_str = '[LOOPPOINT] Unable to open the global BBV file: [%s]' % global_fn
-  print(err_str)
-  log.write(err_str)
+def main():
+  if len(sys.argv) <= 1:
+    print(f"Usage: {sys.argv[0]} <basename> [num_threads] [out_basename]")
+    sys.exit(1)
 
-out[0].close()
-log.close()
+  basename = sys.argv[1]
+  print(f'Using basename = [{basename}]')
+
+  num_threads = 8
+  out_basename = basename
+  
+  if len(sys.argv) >= 3:
+    num_threads = int(sys.argv[2])
+    if len(sys.argv) > 3:
+      out_basename = sys.argv[3]
+      print(f'Using output basename = [{out_basename}]')
+
+  success = process_bbv(basename, num_threads, out_basename)
+  
+  if not success:
+    sys.exit(1)
+
+
+if __name__ == "__main__":
+  main()

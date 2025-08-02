@@ -1,8 +1,8 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # BEGIN_LEGAL
 # The MIT License (MIT)
 #
-# Copyright (c) 2022, National University of Singapore
+# Copyright (c) 2025, National University of Singapore
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -23,10 +23,26 @@
 # SOFTWARE.
 # END_LEGAL
 
-import getopt, sys, os ,subprocess, glob, bz2, shutil, errno
-import argparse, re, math, random, hashlib, itertools, glob
-import itertools, datetime
-import tempfile, pipes, copy, types
+import getopt
+import sys
+import os
+import subprocess
+import glob
+import bz2
+import shutil
+import errno
+import argparse
+import re
+import math
+import random
+import hashlib
+import glob
+import itertools
+import datetime
+import tempfile
+import pipes
+import copy
+import types
 
 def ex(cmd, cwd = '.'):
   proc = subprocess.Popen(cmd, cwd = cwd, shell = True)
@@ -79,7 +95,8 @@ export PIN_APP_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
   execute_script += '''
 (if [ -x "./postprocess" ]; then "./postprocess" "%(program)s" "%(inputsize)s" "%(nthreads)s" "%(lp_base_dir)s"; fi )
 ''' % locals()
-  file(os.path.join(target_dir, 'execute.sh'), 'w').write(execute_script)
+  with open(os.path.join(target_dir, 'execute.sh'), 'w') as f:
+    f.write(execute_script)
   cmd = 'bash %s' % os.path.join(target_dir, 'execute.sh')
   if config['logging']:
     os.system('echo "Running commands:" >> %s' % config['log_file'])
@@ -140,7 +157,8 @@ def graphite_submit(
   else:
     return
 
-  file(os.path.join(target_dir, 'execute.sh'), 'w').write(r'''
+  with open(os.path.join(target_dir, 'execute.sh'), 'w') as f:
+    f.write(r'''
     export GRAPHITE_ROOT=%(sniper_root)s
     export SNIPER_ROOT=%(sniper_root)s
 
@@ -162,7 +180,7 @@ def graphite_submit(
     %(startcmd)s \
       %(graphite_extra_opts)s
     (if [ -x "./postprocess" ]; then "./postprocess" "%(program)s" "%(inputsize)s" "%(nthreads)s" "%(lp_base_dir)s"; fi )
-  ''' % locals())
+    ''' % locals())
 
   cmd = 'bash %s' % os.path.join(target_dir, 'execute.sh')
   if config['logging']:

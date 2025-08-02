@@ -358,14 +358,6 @@ namespace looppoint {
                 // Only instrument main image loop entries.
                 if (!IMG_IsMainExecutable(img)) return; 
             }
-
-			if (RTN_Name(r).find(std::string("_intel_")) != std::string::npos)
-			{
-				// Workaround to ignore the code in _intel_* routines to be region
-				// boundaries that can mess up the PCs with different microarchitectures.
-				std::cerr << "[" << __FUNCTION__ << "] Ignoring TRACE level routine: " << RTN_Name(r) << std::endl;
-				return;
-			}
             
             // loop thru all BBLs in this trace.
             for(BBL bbl = TRACE_BblHead(trace); BBL_Valid(bbl); bbl = BBL_Next(bbl))

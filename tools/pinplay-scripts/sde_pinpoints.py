@@ -1,35 +1,35 @@
 #!/usr/bin/env python3
-
-# BEGIN_LEGAL
-# BSD License
+#BEGIN_LEGAL 
+#BSD License 
 #
-# Copyright (c)2015 Intel Corporation. All rights reserved.
+#Copyright (c)2022 Intel Corporation. All rights reserved.
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are
-# met:
+#Redistribution and use in source and binary forms, with or without modification, 
+# are permitted provided that the following conditions are met:
 #
-# Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.  Redistributions
-# in binary form must reproduce the above copyright notice, this list of
-# conditions and the following disclaimer in the documentation and/or
-# other materials provided with the distribution.  Neither the name of
-# the Intel Corporation nor the names of its contributors may be used to
-# endorse or promote products derived from this software without
-# specific prior written permission.
+#1. Redistributions of source code must retain the above copyright notice, 
+#   this list of conditions and the following disclaimer.
 #
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-# ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE INTEL OR
-# ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-# END_LEGAL
+#2. Redistributions in binary form must reproduce the above copyright notice, 
+#   this list of conditions and the following disclaimer in the documentation 
+#   and/or other materials provided with the distribution.
+#
+#3. Neither the name of the copyright holder nor the names of its contributors 
+#   may be used to endorse or promote products derived from this software without 
+#   specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED.
+# IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+# INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+# LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+# OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#END_LEGAL
 
 # This is a script to replay one pinplay process
 #
@@ -44,7 +44,6 @@ import config
 import msg
 import pinpoints
 import sde_kit
-import sde_cmpsim_kit
 import sde_phases
 import phases
 import util
@@ -58,7 +57,7 @@ class SDEPinPoints(pinpoints.PinPoints):
     logger_cmd = 'sde_logger.py'
     replay_cmd = 'sde_replay_dir.py'
     replayer_cmd = 'sde_replayer.py'
-    sim_replay_cmd = 'sde_cmpsim_replay_dir.py'
+    #sim_replay_cmd = 'sde_cmpsim_replay_dir.py'
     sim_run_cmd = 'sim_run_dir.py'
 
     def PrintHome(self, options):
@@ -92,6 +91,7 @@ class SDEPinPoints(pinpoints.PinPoints):
         @return SDE kit
         """
 
+        #import pdb ; pdb.set_trace()
         kit_obj = sde_kit.SDEKit()
         self.pin = kit_obj.pin
         self.path = kit_obj.path
@@ -107,7 +107,7 @@ class SDEPinPoints(pinpoints.PinPoints):
         @return Simulator kit
         """
 
-        kit_obj = sde_cmpsim_kit.CMPsimKit()
+        #import pdb ; pdb.set_trace()
         self.pin = kit_obj.pin
         self.path = kit_obj.path
         self.kit_type = kit_obj.kit_type
@@ -204,7 +204,7 @@ class SDEPinPoints(pinpoints.PinPoints):
 
         # Need the appropriate simulator kit too.
         #
-        sim_kit = self.GetSimKit()
+        #sim_kit = self.GetSimKit()
 
         # Generate LMAT/LIT files.
         #
@@ -244,6 +244,7 @@ class SDEPinPoints(pinpoints.PinPoints):
         if options.region_sim or options.default_phases:
             # Print out CMPSim results every warmup_length instructions.
             #
+            msg.PrintAndExit('Region Simulation not supported ')
             phase_length = options.warmup_length // config.instr_cmpsim_phase
             if phase_length == 0:
                 phase_length = 1
@@ -263,6 +264,7 @@ class SDEPinPoints(pinpoints.PinPoints):
         # Run CMPSim simulator on whole program pinballs.
         #
         if options.whole_sim or options.default_phases:
+            msg.PrintAndExit('Simulation (whole-program) not supported ')
             # Set phase_length to print out CMPSim results every slice_size instructions.
             #
             phase_length = options.slice_size // config.instr_cmpsim_phase
@@ -283,6 +285,7 @@ class SDEPinPoints(pinpoints.PinPoints):
         # Calculate prediction error from simulator data files.
         #
         if options.pred_error or options.default_phases:
+            msg.PrintAndExit('Simulation/predction error compute not supported ')
             if not options.list:
                 msg.PrintMsgDate('Calculating prediction error %s' % \
                     config.PhaseStr(config.pred_error))

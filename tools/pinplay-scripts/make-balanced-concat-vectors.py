@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
+
 # BEGIN_LEGAL
 # The MIT License (MIT)
 #
-# Copyright (c) 2021, National University of Singapore
+# Copyright (c) 2022, National University of Singapore
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -30,7 +31,7 @@ import numpy as np
 num_threads = 8
 
 if len(sys.argv) <= 1:
-  print("invalid sys.argv", sys.argv)
+  print("Usage: %s <basename> [<num-threads> <out-basename>]" %sys.argv[0])
   sys.exit(1)
 
 basename = sys.argv[1]
@@ -47,13 +48,7 @@ if len(sys.argv) >= 3:
 files = []
 out = []
 for f in range(num_threads):
-  if os.path.exists("%s.T.%s.bb" % (basename,f)):
-    files.append(open("%s.T.%s.bb" % (basename,f), "r"))
-  else: 
-    # Some applications spawn fewer num of threads than requested
-    num_threads = f
-    break
-
+  files.append(open("%s.T.%s.bb" % (basename,f), "r"))
 
 # For each T line
 max_bbv = int(-1)
@@ -120,8 +115,8 @@ while True:
 
 global_fn_bkp = basename + '.global.bb.bkp'
 global_fn = basename + '.global.bb'
-if not os.path.isfile(global_fn_bkp) and os.path.exists(global_fn):
-    print('Found global BBV file [%s]' % (global_fn))
+if not os.path.isfile(global_fn_bkp):
+    print('Unable to find global BBV file: [%s]. Trying [%s]' % (global_fn_bkp, global_fn))
 else:
     global_fn = global_fn_bkp
 
@@ -144,13 +139,14 @@ try:
     if curr_pcmarker:
       final_pcmarker = curr_pcmarker
 except IOError as e:
-  err_str = '[LOOPPOINT] Unable to open the global BBV file: [%s]' % global_fn
+  err_str = 'Unable to open the global BBV file: [%s]' % global_fn
   print(err_str)
   log.write(err_str)
 
-f_thread_ins = open("%s.threadins.csv" % (out_basename,), "w")
+f_thread_ins = open("%s.threadins.cv" % (out_basename,), "w")
 ordered_bb_pieces = collections.OrderedDict(sorted(bb_pieces.items()))
 
+out[0].write('%s num_threads %d\n' % ('#make-balanced-concat-vectors.py', num_threads))
 if globalbb_init_str:
   for line in globalbb_init_str:
     out[0].write('%s' % line)
@@ -176,7 +172,7 @@ for k,v in ordered_bb_pieces.items():
     out[0].write('\n')
     
     if tot_ins == 0:
-        err_str = '[LOOPPOINT] Found slice without instructions, icounts: %s' % str(k)
+        err_str = 'Found slice without instructions, icounts: %s' % str(k)
         print (err_str)
         log.write(err_str)
     else:
@@ -200,7 +196,7 @@ try:
     for line in global_in:
       out[0].write(line)
 except IOError as e:
-  err_str = '[LOOPPOINT] Unable to open the global BBV file: [%s]' % global_fn
+  err_str = 'Unable to open the global BBV file: [%s]' % global_fn
   print(err_str)
   log.write(err_str)
 

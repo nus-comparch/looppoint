@@ -1,49 +1,41 @@
 #!/usr/bin/env python3
-#BEGIN_LEGAL
-# BSD License
+#BEGIN_LEGAL 
+#BSD License 
 #
-# Copyright (c)2019 Intel Corporation. All rights reserved.
+#Copyright (c)2022 Intel Corporation. All rights reserved.
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are
-# met:
+#Redistribution and use in source and binary forms, with or without modification, 
+# are permitted provided that the following conditions are met:
 #
-# Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.  Redistributions
-# in binary form must reproduce the above copyright notice, this list of
-# conditions and the following disclaimer in the documentation and/or
-# other materials provided with the distribution.  Neither the name of
-# the Intel Corporation nor the names of its contributors may be used to
-# endorse or promote products derived from this software without
-# specific prior written permission.
+#1. Redistributions of source code must retain the above copyright notice, 
+#   this list of conditions and the following disclaimer.
 #
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-# ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE INTEL OR
-# ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-# END_LEGAL
+#2. Redistributions in binary form must reproduce the above copyright notice, 
+#   this list of conditions and the following disclaimer in the documentation 
+#   and/or other materials provided with the distribution.
 #
+#3. Neither the name of the copyright holder nor the names of its contributors 
+#   may be used to endorse or promote products derived from this software without 
+#   specific prior written permission.
 #
-# @ORIGINAL_AUTHORS: T. Mack Stallcup, Cristiano Pereira, Harish Patil,
-#  Chuck Yount
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED.
+# IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+# INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+# LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+# OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#END_LEGAL
 #
-
 #
 # Read in a file of frequency vectors (BBV or LDV) and execute one of several
 # actions on it.  Default is to generate a regions CSV file from a BBV file.
 # Other actions include:
 #   normalizing and projecting FV file to a lower dimension
-#
-# November 2016: Modified by Harish Patil to create LLVMPoints
-# Requires Python scripts from SDE (PinPlay) kit (sde-pinplay-*-lin)
-# Used by  the script 'runllvmsimpoint.sh'
 
 
 import datetime
@@ -58,6 +50,9 @@ import argparse
 from collections import OrderedDict
 
 from msg import ensure_string
+pcbbid_info=[]
+maxbbid=0
+threadcount=1
 
 def PrintAndExit(msg):
     """
@@ -326,18 +321,30 @@ def GetFirstPcinfo(fp):
     return marker
 
 
+def findThreadCount(fp):
+    """
+     See if the first line is of the form:
+     #make-balanced-concat-vectors.py num_threads 8
+     if yes, set threadcount to the last field
+    """
+    global threadcount
+    line = ensure_string(fp.readline())
+##make-balanced-concat-vectors.py num_threads 8
+    if 'num_threads' in line:
+      tokens = line.split(' ')
+      threadcount = int(tokens[2])
 
 def ProcessBlockIdSummary(fp):
     """
     Process records starting with 'Block id:'
      e.g. 'Block id: 2348 0x2aaac42a4306:0x2aaac42a430d'
      e.g. 'Block id: <bbid> <firstPC>:<lastPC>'
-        The same 'firstPC' may start multiple 'bbid's.
-    @return a dictinary mapping 'firstPC' to a 'list of (bbid, sticount) pairs'
-       it starts
+    @return a list of tuples (bbid, startpc, endpc, sticount) and maxbbid
     """
 
-    pcbbid_dict = {}
+    global pcbbid_info
+    global maxbbid
+
     line = ensure_string(fp.readline())
     while not line.startswith('Block id:') and line:
         line = ensure_string(fp.readline())
@@ -345,18 +352,49 @@ def ProcessBlockIdSummary(fp):
     while line.startswith('Block id:') and line:
         tokens = line.split(' ')
         bbid = int(tokens[2])
+        if(int(bbid) > maxbbid):
+          maxbbid = int(bbid)
         pcrange = tokens[3]
         sticount = int(tokens[6])
-        pc = pcrange.split(":")[0]
-        if pc in list(pcbbid_dict.keys()):
-            pcbbid_dict[pc].append((bbid,sticount))
-        else:
-            pcbbid_dict[pc] = []
-            pcbbid_dict[pc].append((bbid,sticount))
+        pc1 = pcrange.split(":")[0]
+        pc2 = pcrange.split(":")[1]
+        pcbbid_info.append((bbid,pc1,pc2,sticount))
         line = ensure_string(fp.readline())
 
     # import pdb;  pdb.set_trace()
-    return pcbbid_dict
+    return
+
+def CreateEndPCbbid_dict(inmarkerPClist):
+    """
+    Process global pcbbid_info containing tuples (bbid,startpc,endpc,sticount)
+    @return a dictinary mapping 'PC' to a 'list of (bbid, sticount) pairs'
+       it starts or ends or subsumes
+    """
+    global pcbbid_info
+
+    # Create a list with unique PCs
+    markerPClist = []
+    #region nos. could be non-contiguous and certain 'i's could be 'None'
+    for i in inmarkerPClist:
+      if i and i['pc'] not in markerPClist: 
+        markerPClist.append(i['pc'])
+    markerpcbbid_dict = {}
+
+    for item in pcbbid_info:
+      bbid = item[0]
+      pc1 = item[1]
+      pc2 = item[2]
+      sticount = item[3]
+      for markerPC in markerPClist:
+        if (pc1 == markerPC) or (pc2 == markerPC) or ((int(pc1,16) < int(markerPC,16)) and (int(pc2,16) > int(markerPC,16))):
+          if markerPC in list(markerpcbbid_dict.keys()):
+            for tid in range(threadcount):
+              markerpcbbid_dict[markerPC].append((bbid + maxbbid*tid,sticount))
+          else:
+            markerpcbbid_dict[markerPC] = []
+            for tid in range(threadcount):
+              markerpcbbid_dict[markerPC].append((bbid + maxbbid*tid,sticount))
+    return markerpcbbid_dict
 
 def ProcessLabelFile(fp_lbl):
     """
@@ -477,7 +515,7 @@ def GetWarmuppoints(fp, wfactor):
 
     return WarmupRegionToSlice
 
-def GetRegionBBV(fp, RegionToSlice, max_region_number, pcbblist_dict, sliceCluster):
+def GetRegionBBV(fp, RegionToSlice, max_region_number, sliceCluster):
     """
     Read all the frequency vector slices and the basic block id info from a
     basic block vector file.  Put the data into a set of lists which are used
@@ -498,7 +536,7 @@ def GetRegionBBV(fp, RegionToSlice, max_region_number, pcbblist_dict, sliceClust
     # List of lists of basic block vectors, each inner list contains the blocks for one of the
     # representative regions. 
     #
-    region_bbv = []
+    region_bbv = [None] * num_regions
 
     # A tuple {'bbid':x, 'bbcount':y, 'bbinfo':"<fnname:bbname>"}
     current_marker = GetFirstPcinfo(fp)
@@ -510,6 +548,8 @@ def GetRegionBBV(fp, RegionToSlice, max_region_number, pcbblist_dict, sliceClust
 
     # List of start markers for representative regions. 
     region_end_markers = [None] * num_regions
+
+    region_slice = [None] * num_regions
 
     region_end_marker_relativecount = [None] * num_regions
 
@@ -565,11 +605,12 @@ def GetRegionBBV(fp, RegionToSlice, max_region_number, pcbblist_dict, sliceClust
             clusterid = sliceCluster[slice_num]
             region_start_markers[clusterid] = previous_marker 
             region_end_markers[clusterid] = current_marker 
+            region_bbv[clusterid] = fv 
             startPC = previous_marker['pc']
             endPC = current_marker['pc']
             relendPCcount = 1 
             # endPC is going to be executed in the next slice 
-            endPCbbidlist = pcbblist_dict[endPC]
+            ##endPCbbidlist = pcbblist_dict[endPC]
             #  now, add executions of endPC in the current slice
             #FIXME : do we need special action if startPC==endPC?
             # relative count is used for region pinball replay
@@ -577,28 +618,53 @@ def GetRegionBBV(fp, RegionToSlice, max_region_number, pcbblist_dict, sliceClust
             # occurrence of endPC (as statPC) is not going to be captured
             # in the pinball. So, till precise logging becomes the default
             # we will continue to decrease relendPCcount by 1
-            if startPC == endPC:
-                relendPCcount = 0 
-            for bbidpair in endPCbbidlist:
-                thisitem = [item for item in fv if item[0] == bbidpair[0] ]
-                if not thisitem:
-                    break
-                thispair = thisitem[0] 
-                thiscount = thispair[1] 
-                bbidsticount = bbidpair[1] 
-                thisPCcount = thiscount/bbidsticount
-                relendPCcount += thisPCcount
+            ##if startPC == endPC:
+                ##relendPCcount = 0 
+            ##for bbidpair in endPCbbidlist:
+                ##thisitem = [item for item in fv if item[0] == bbidpair[0] ]
+                ##if not thisitem:
+                    ##continue # another bbidpair may match
+                ##thispair = thisitem[0] 
+                ##thiscount = thispair[1] 
+                ##bbidsticount = bbidpair[1] 
+                ##thisPCcount = thiscount/bbidsticount
+                ##relendPCcount += thisPCcount
             region_end_marker_relativecount[clusterid] = relendPCcount 
         slice_num += 1
 
+    pcbblist_info = CreateEndPCbbid_dict(region_end_markers)
     #import pdb;  pdb.set_trace()
     total_num_slices = len(cumulative_icount)
     for region in sorted(RegionToSlice.keys()): 
+        endPC = region_end_markers[region]['pc']
+        startPC = region_start_markers[region]['pc']
+        endPCbbidlist = pcbblist_info[endPC]
+        relendPCcount = 1 
+        # endPC is going to be executed in the next slice 
+        #  now, add executions of endPC in the current slice
+        #FIXME : do we need special action if startPC==endPC?
+        # relative count is used for region pinball replay
+        # and we currently have imprecise logging hence the initial
+        # occurrence of endPC (as statPC) is not going to be captured
+        # in the pinball. So, till precise logging becomes the default
+        # we will continue to decrease relendPCcount by 1
+        if startPC == endPC:
+          relendPCcount = 0 
+        for bbidpair in endPCbbidlist:
+          thisitem = [item for item in region_bbv[region] if item[0] == bbidpair[0] ]
+          if not thisitem:
+            continue # another bbidpair may match
+          thispair = thisitem[0] 
+          thiscount = thispair[1] 
+          bbidsticount = bbidpair[1] 
+          thisPCcount = thiscount/bbidsticount
+          relendPCcount += thisPCcount
+          region_end_marker_relativecount[region] = relendPCcount 
         multiplier = float(cluster_icount[region])/float(run_sum)*total_num_slices
         region_multiplier[region] = multiplier
     return cumulative_icount, cluster_icount, cluster_slicecount, region_bbv, region_multiplier, region_start_markers, region_end_markers, region_end_marker_relativecount, first_bb_marker
 
-def GetWarmupRegionBBV(fp, WarmupRegionToSlice, RegionToSlice, max_region_number, wfactor, pcbblist_dict):
+def GetWarmupRegionBBV(fp, WarmupRegionToSlice, RegionToSlice, max_region_number, wfactor):
     """
     Read all the frequency vector slices and the basic block id info from a
     basic block vector file.  Put the data into a set of lists which are used
@@ -708,6 +774,7 @@ def GetWarmupRegionBBV(fp, WarmupRegionToSlice, RegionToSlice, max_region_number
         slice_num += 1
 
     # now set region_end_marker_relativecount[] 
+    pcbblist_info = CreateEndPCbbid_dict(region_end_markers)
     #import pdb;  pdb.set_trace()
     for region in list(WarmupRegionToSlice.keys()): 
       if region_end_markers[region] is None:
@@ -720,13 +787,13 @@ def GetWarmupRegionBBV(fp, WarmupRegionToSlice, RegionToSlice, max_region_number
       startPC = region_start_markers[region]['pc']
       endPC = region_end_markers[region]['pc']
       endPCcount = 0 
-      endPCbbidlist = pcbblist_dict[endPC]
+      endPCbbidlist = pcbblist_info[endPC]
       #FIXME : do we need special action if startPC==endPC?
       for thisbbv in WarmupRegionFVs[region]:  
         for bbidpair in endPCbbidlist:
           thisitem = [item for item in thisbbv if item[0] == bbidpair[0] ]
           if not thisitem:
-            break
+            continue # another bbidpair may match
           thispair = thisitem[0] 
           thiscount = thispair[1] 
           bbidsticount = bbidpair[1] 
@@ -754,7 +821,7 @@ def CheckRegions(RegionToSlice, weight_dict):
         sys.exit(-1)
 
 
-def GenRegionCSV(fp_bbv, fp_simp, fp_weight, warmup_factor, pcbblist_dict, sliceCluster, argtid):
+def GenRegionCSV(fp_bbv, fp_simp, fp_weight, warmup_factor, sliceCluster, argtid):
     """
     Read in three files (BBV, weights, simpoints) and print to stdout
     a regions CSV file which defines the representative regions.
@@ -773,7 +840,7 @@ def GenRegionCSV(fp_bbv, fp_simp, fp_weight, warmup_factor, pcbblist_dict, slice
         tid = int(argtid)
     weight_dict = GetWeights(fp_weight)
     RegionToSlice, max_region_number = GetSimpoints(fp_simp)
-    cumulative_icount, cluster_icount, cluster_slicecount, region_bbv, region_multiplier, region_start_markers, region_end_markers, region_end_markers_relativecount, first_bb_marker = GetRegionBBV(fp_bbv, RegionToSlice, max_region_number, pcbblist_dict, sliceCluster)
+    cumulative_icount, cluster_icount, cluster_slicecount, region_bbv, region_multiplier, region_start_markers, region_end_markers, region_end_markers_relativecount, first_bb_marker = GetRegionBBV(fp_bbv, RegionToSlice, max_region_number, sliceCluster)
     CheckRegions(RegionToSlice, weight_dict)
 
     total_num_slices = len(cumulative_icount)
@@ -784,6 +851,8 @@ def GenRegionCSV(fp_bbv, fp_simp, fp_weight, warmup_factor, pcbblist_dict, slice
     for string in sys.argv:
         PrintMsgNoCR(string + ' '),
     PrintMsg('')
+    if threadcount > 1 :
+      PrintMsg('# concatenated bbv threadcount %d' % threadcount)
     PrintMsg('')
     PrintMsg(
         '# comment,thread-id,region-id,start-pc, start-image-name, start-image-offset, start-pc-count,end-pc, end-image-name, end-image-offset, end-pc-count,end-pc-relative-count, region-length, region-weight, region-multiplier, region-type')
@@ -832,7 +901,7 @@ def GenRegionCSV(fp_bbv, fp_simp, fp_weight, warmup_factor, pcbblist_dict, slice
     if warmup_factor is not None: 
         if int(warmup_factor) > 0:
             WarmupRegionToSlice = GetWarmuppoints(fp_simp, warmup_factor)
-            cumulative_icount, warmup_region_start_markers, warmup_region_end_markers, warup_region_end_markers_relativecount = GetWarmupRegionBBV(fp_bbv, WarmupRegionToSlice, RegionToSlice, max_region_number, warmup_factor, pcbblist_dict)
+            cumulative_icount, warmup_region_start_markers, warmup_region_end_markers, warup_region_end_markers_relativecount = GetWarmupRegionBBV(fp_bbv, WarmupRegionToSlice, RegionToSlice, max_region_number, warmup_factor)
 
             for wregion in sorted(WarmupRegionToSlice.keys()):
                 # Calculate the info for the regions and print it.
@@ -924,7 +993,17 @@ args = parser.parse_args()
 fp_lbl = OpenLabelFile(args.label_file, 'Slice label file: ')
 sliceCluster = ProcessLabelFile(fp_lbl)
 fp_bbv = OpenFVFile(args.bbv_file, 'Basic Block Vector (bbv) file: ')
-pcbblist_dict = ProcessBlockIdSummary(fp_bbv)
+findThreadCount(fp_bbv)
+fp_bbv.close()
+fp_bbv = OpenFVFile(args.bbv_file, 'Basic Block Vector (bbv) file: ')
+ProcessBlockIdSummary(fp_bbv)
+
+#markers = [None] * 2
+#markers[0]="0xc93a43"
+#markers[1]="0xc93a43"
+#markerPCbbid_dict = CreateEndPCbbid_dict(markers)
+#sys.exit(0)
+
 fp_simp = OpenSimpointFile(args.region_file, 'simpoints file: ')
 fp_weight = OpenWeightsFile(args.weight_file, 'weights file: ')
 
@@ -932,9 +1011,9 @@ fp_weight = OpenWeightsFile(args.weight_file, 'weights file: ')
 
 # re-open the bbv file and summarize "Block id:" records
 fp_bbv.close()
+#import pdb;  pdb.set_trace()
 fp_bbv = OpenFVFile(args.bbv_file, 'Basic Block Vector (bbv) file: ')
-
-GenRegionCSV(fp_bbv, fp_simp, fp_weight, args.warmup_factor, pcbblist_dict, sliceCluster, args.tid)
+GenRegionCSV(fp_bbv, fp_simp, fp_weight, args.warmup_factor, sliceCluster, args.tid)
 
 cleanup()
 sys.exit(0)

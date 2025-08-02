@@ -1,3 +1,5 @@
+// Copyright (C) 2022 Intel Corporation
+// SPDX-License-Identifier: BSD-3-Clause
 /*BEGIN_LEGAL 
 BSD License 
 
@@ -316,8 +318,12 @@ class CONTROL_GLOBALIREGIONS
         _maxThreads = PIN_MAX_THREADS;
         _xcount = 0;
         _last_triggered_iregionGlobal = NULL;
+        _last_triggered_iregion = NULL;
         _passContext = FALSE;
         _active = false;
+        _iregions = NULL;
+        _events = NULL;  
+        _cm = NULL;
     }
 
     /*! @ingroup CONTROLLER_GLOBALIREGIONS

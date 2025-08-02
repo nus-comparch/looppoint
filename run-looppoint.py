@@ -1,8 +1,8 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # BEGIN_LEGAL
 # The MIT License (MIT)
 #
-# Copyright (c) 2022, National University of Singapore
+# Copyright (c) 2025, National University of Singapore
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -23,23 +23,31 @@
 # SOFTWARE.
 # END_LEGAL
 
-from __future__ import division
-import getopt, sys, os, subprocess, glob, bz2, shutil
-import time, errno, ConfigParser
+import getopt
+import sys
+import os
+import subprocess
+import glob
+import bz2
+import shutil
+import time
+import errno
+import configparser
 from tabulate import tabulate
 import lplib
 if not os.path.isdir(os.path.join(os.path.dirname(__file__), 'tools', 'sniper')):
-  print ('[LOOPPOINT] Error: Sniper not found.')
+  print('[LOOPPOINT] Error: Sniper not found.')
   exit(1)
 sys.path.append(os.path.join(os.path.dirname(__file__), 'tools', 'sniper', 'tools'))
-import sniper_lib, cpistack
+import sniper_lib
+import cpistack
 
 def ex(cmd, cwd='.'):
   proc = subprocess.Popen([ 'bash', '-c', cmd ], cwd=cwd)
   proc.communicate()
 
 def ex_log(cmd, config, cwd='.', logging=True):
-  print ('[command] %s' % cmd)
+  print('[command] %s' % cmd)
   if logging:
     cmd += ' 2>&1 | tee -a %(log_file)s' % config
   ex(cmd, cwd)
@@ -49,14 +57,14 @@ def log(config, *args):
   ex_log('echo "[%s()] %s"' % (fun, ' '.join(map(str, args))), config)
 
 def ex_env(cmd, config, env, cwd='.', logging=True):
-  print ('[command] %s' % cmd)
+  print('[command] %s' % cmd)
   if logging:
     cmd += ' 2>&1 | tee -a %(log_file)s' % config
   proc = subprocess.Popen(cmd, env=env, cwd=cwd, shell=True)
   proc.communicate()
 
 def ex_res(cmd, config, env, cwd='.', logging=True):
-  print ('[command] %s' % cmd)
+  print('[command] %s' % cmd)
   if logging:
     cmd += ' 2>&1 | tee -a %(log_file)s' % config
   proc = subprocess.Popen(cmd, env=env, cwd=cwd, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
@@ -73,14 +81,14 @@ def mkdir_p(path):
       raise
 
 def get_app_cmd(config):
-  configParser = ConfigParser.ConfigParser()
+  configParser = configparser.ConfigParser()
   configParser.read(config['app_cfg'])
   binary_args = configParser.get('Parameters','command').split('>')[0]
   return binary_args
 
 def make_mt_pinball(config):
   mkdir_p(os.path.dirname(config['whole_basename']))
-  print ("[LOOPPOINT] Generating fat pinball.")
+  print("[LOOPPOINT] Generating fat pinball.")
   files = []
   if not config['custom_cfg']:
     files.append('preprocess')
@@ -92,14 +100,14 @@ def make_mt_pinball(config):
   lplib.jobsubmit(config, files = files, out_dirs = out_dirs, startcmd = [cmd])
 
 def gen_dcfg(config):
-  print ("[LOOPPOINT] Generating DCFG file.")
+  print("[LOOPPOINT] Generating DCFG file.")
   if config['use_pinplay'] and not os.path.isfile(config['pintool_looppoint']):
-    print ("[LOOPPOINT] Error: LoopPoint tool not found.")
+    print("[LOOPPOINT] Error: LoopPoint tool not found.")
     exit(1)
   if not config['binary_profile']:
     wpp_name = glob.glob(config['whole_basename'] + '*.address')
     if not wpp_name:
-      print ("[LOOPPOINT] Error: Whole-program pinball not found.")
+      print("[LOOPPOINT] Error: Whole-program pinball not found.")
       exit(1)
     wpp_basename = wpp_name[-1].rsplit('.', 1)[0]
     update_config = {}
@@ -124,14 +132,14 @@ def gen_dcfg(config):
     cmd = '%(sde64)s -t %(sdetool_looppoint)s -dcfg -dcfg:out_base_name %(wpp_dir)s/dcfg-out -- ' % config
     cmd += get_app_cmd(config)
 
-  print ("[LOOPPOINT] Running cmd %s" %cmd)
+  print("[LOOPPOINT] Running cmd %s" %cmd)
   lplib.jobsubmit(config, files = files, out_dirs = outdirs, startcmd = [cmd])
 
 def gen_bbv(config):
-  print ("[LOOPPOINT] Profiling for BBV Generation.")
+  print("[LOOPPOINT] Profiling for BBV Generation.")
   dcfg_file = glob.glob(config['wpp_dir'] + '/*.dcfg.json.bz2')
   if not dcfg_file:
-    print ("[LOOPPOINT] Error: DCFG file not found.")
+    print("[LOOPPOINT] Error: DCFG file not found.")
     exit(1)
   config['dcfg_file'] = dcfg_file[-1]
   files = []
@@ -157,25 +165,25 @@ def gen_bbv(config):
     if config['flowcontrol']:
       cmd += ' -flowcontrol:verbose 1 -flowcontrol:quantum 1000000 -flowcontrol:maxthreads %(ncores)s' % config
     cmd += ' -- %s' % (get_app_cmd(config))
-    print ("[LOOPPOINT] Running cmd %s" %cmd)
+    print("[LOOPPOINT] Running cmd %s" %cmd)
     lplib.jobsubmit(config, files = files, out_dirs = outdirs, startcmd = [cmd])
 
   # Concatenation of BBVs
   data_dir = glob.glob(config['output_base_dir'] + '/*.Data')
   if not data_dir:
-    print ("[LOOPPOINT] Error: Profile data not found.")
+    print("[LOOPPOINT] Error: Profile data not found.")
     exit(1)
   config['data_dir'] = data_dir[0]
   globalbb = glob.glob(config['data_dir'] + '/*.global.bb*')
   if not globalbb:
-    print ("[LOOPPOINT] Error: Global BBV not found.")
+    print("[LOOPPOINT] Error: Global BBV not found.")
     exit(1)
   bb_basename = os.path.join(config['data_dir'], config['data_dir'].split('/')[-1].rsplit('.', 1)[0])
   config['bb_basename'] = bb_basename
   if not config['force']:
     cvfile = glob.glob(config['data_dir'] + '/*.global.cv')
     if cvfile:
-      print ("[LOOPPOINT] Found concatenated vector. Not generating.")
+      print("[LOOPPOINT] Found concatenated vector. Not generating.")
       return
   cmd = '%(tool_concat_vector)s %(bb_basename)s %(ncores)s' % config
   ex_log(cmd, config)
@@ -197,7 +205,7 @@ def gen_bbv(config):
   return
 
 def gen_cluster(config):
-  print ("[LOOPPOINT] Clustering the BBVs.")
+  print("[LOOPPOINT] Clustering the BBVs.")
   if not config['binary_profile']:
     cmd = '%(tool_sde_pinpoints)s --pintool="sde-global-looppoint.so" ' % config
     if config['use_pinplay']:
@@ -277,11 +285,11 @@ def get_startsim_parms(sim_config, config):
   return sniper_args
 
 def run_sniper(config, mtng=True):
-  print ("[LOOPPOINT] Starting Sniper simulations")
+  print("[LOOPPOINT] Starting Sniper simulations")
   arch_cfg = 'gainestown'
   scheduler = 'static'
   sniper_binary_args = None
-  configParser = ConfigParser.ConfigParser()
+  configParser = configparser.ConfigParser()
   configParser.read(config['app_cfg'])
   sniper_binary_args = '"' + configParser.get('Parameters','command').split('>')[0] + '"'
   include_mem_latency = True
@@ -315,7 +323,7 @@ def run_sniper(config, mtng=True):
 
   csv_file = glob.glob(config['data_dir'] + '/*.global.pinpoints.csv')
   if not csv_file:
-    print ("[LOOPPOINT] Error: Unable to find cluster information.")
+    print("[LOOPPOINT] Error: Unable to find cluster information.")
   with open(csv_file[0], 'r') as f:
     for csv_line in f:
       if not csv_line.startswith('cluster'):
@@ -363,7 +371,7 @@ def get_sim_res(config, sim_path, profile_path, region = None):
   resultsdir = os.path.join(sim_path, region)
   try:
     res = sniper_lib.get_results(resultsdir=resultsdir)
-  except (KeyError, ValueError), e:
+  except (KeyError, ValueError) as e:
     print('[LOOPPOINT] Error: Unable to fetch results for %s.' % region)
     if region == 'wp':
       exit(1)
@@ -444,7 +452,7 @@ def evaluate(config):
   sum_rep_runtime = 0.0
   cov_mult = 0.0
   tot_mult = sum(region_mult.values())
-  for regionid, multiplier in region_mult.iteritems():
+  for regionid, multiplier in region_mult.items():
     region_runtime = 0
     try:
       region_runtime =  read_simstats(region_stats[regionid], region_config[regionid], 'runtime')
@@ -472,7 +480,7 @@ def evaluate(config):
   return tab
 
 def run_native(config):
-  print ('[LOOPPOINT] Running %(bm_fullname)s.%(bm_input)s natively using %(input_class)s input class and %(wait_policy)s OMP wait policy' % config)
+  print('[LOOPPOINT] Running %(bm_fullname)s.%(bm_input)s natively using %(input_class)s input class and %(wait_policy)s OMP wait policy' % config)
   files = ['preprocess']
   out_dirs = []
   #cmd = 'perf stat -e instructions:u %s' % get_app_cmd(config)
@@ -515,14 +523,14 @@ def bm_to_path(config):
       config['input_class'] = 'A'
   cfg_file = glob.glob(config['bm_path'] + '/' + config['input_class'] + '/' + config['bm_fullname'] + '.' + config['bm_input'] + '.cfg')
   if not cfg_file:
-    print ('[LOOPPOINT] Error: Invalid config or config file not found.')
+    print('[LOOPPOINT] Error: Invalid config or config file not found.')
     exit(1)
   config['app_cfg'] = cfg_file[0]
   return
 
 def bm_custom_dir(config):
   config['app_cfg'] = config['custom_cfg']
-  configParser = ConfigParser.ConfigParser()
+  configParser = configparser.ConfigParser()
   configParser.read(config['app_cfg'])
   config['bm_name'] = configParser.get('Parameters', 'program_name')
   config['bm_path'] = config['app_cfg'].rsplit('/', 1)[0]
@@ -581,7 +589,7 @@ def create_default_config():
   config['app_base'] = os.path.join(config['basedir'], 'apps')
   config['tools_base'] = os.path.join(config['basedir'], 'tools')
   config['pin_kit'] =  os.path.join(config['tools_base'], 'pin-3.13-98189-g60a6ef199-gcc-linux')
-  config['sde_kit'] =  os.path.join(config['tools_base'], 'sde-external-9.14.0-2022-10-25-lin')
+  config['sde_kit'] =  os.path.join(config['tools_base'], 'sde-external-9.44.0-2024-08-22-lin')
   config['sde64'] =  os.path.join(config['sde_kit'], 'sde64')
   config['sniper_root'] = os.path.join(config['tools_base'], 'sniper')
   config['pinplay'] = os.path.join(config['pin_kit'], 'extras', 'pinplay')
@@ -617,10 +625,10 @@ def create_default_config():
 
 def check_dep(config):
   if config['use_pinplay'] and not os.path.exists(config['pin_kit']):
-    print ("Error detected while finding Pin kit. Double check these paths!")
+    print("Error detected while finding Pin kit. Double check these paths!")
     sys.exit(1)
   if not (config['use_pinplay'] or os.path.exists(config['sde_kit'])):
-    print ("Error detected while finding SDE kit. Double check these paths!")
+    print("Error detected while finding SDE kit. Double check these paths!")
     sys.exit(1)
   if not os.path.exists(config['sniper_root']):
     print("Error detected while finding Sniper. Double check these paths!")
@@ -678,16 +686,30 @@ def run(app_cmd, update_config, res_tab=[]):
 if __name__ == '__main__':
 
   def usage(rc = 1):
-    import imp
+    import importlib.util
     def import_app(name):
-      file, pathname, description = imp.find_module(name)
-      return imp.load_module(name, file, pathname, description)
-    print 'Benchmarks:'
+      try:
+        return importlib.import_module(name)
+      except ImportError:
+        if '/' in name:
+          module_path = name.replace('/', '.')
+          try:
+            return importlib.import_module(module_path)
+          except ImportError:
+            file_path = Path(name + '.py')
+            if file_path.exists():
+              spec = importlib.util.spec_from_file_location(name.replace('/', '.'), file_path)
+              module = importlib.util.module_from_spec(spec)
+              sys.modules[name.replace('/', '.')] = module
+              spec.loader.exec_module(module)
+              return module
+          raise ImportError(f"Could not import module: {name}")
+    print('Benchmarks:')
     for module in import_app('suites').modules:
-      module = import_app('apps/' + module)
-      print ' ', module.__name__.split('/')[-1] + ':'
-      print '   ', ' '.join(module.allbenchmarks())
-    print '''
+      module = import_app(f'apps/{module}')
+      print(' ', module.__name__.split('/')[-1] + ':')
+      print('   ', ' '.join(module.allbenchmarks()))
+    print('''
 The tool runs end-to-end LoopPoint sampling methodology targeting multi-threaded applications.
 Usage:
     run-looppoint.py
@@ -708,7 +730,7 @@ Usage:
 
     Example:> ./run-looppoint.py -n 8 -i test -p demo-matrix-1 --force --no-validate
     Example:> /path/to/looppoint/run-looppoint.py -n 8 -w active -c matmul.1.cfg --force
-    '''
+    ''')
     sys.exit(rc)
 
   update_config = {}
@@ -718,9 +740,9 @@ Usage:
   validate = True
   try:
     opts, args = getopt.getopt(sys.argv[1:], 'hn:i:w:p:c:', [ 'help', 'ncores=', 'input-class=', 'wait-policy=', 'program=', 'custom-cfg=', 'force', 'reuse-profile', 'reuse-fullsim', 'no-validate', 'no-flowcontrol', 'use-pinplay', 'binary-profile', 'native' ])
-  except getopt.GetoptError, e:
+  except getopt.GetoptError as e:
     # print help information and exit:
-    print e
+    print(e)
     usage()
   for o, a in opts:
     if o == '-h' or o == '--help':
@@ -780,7 +802,7 @@ Usage:
   if not native_run:
     print
     if validate:
-      print (tabulate(res_tab, headers = [ 'application', 'runtime\nactual (ns)', 'runtime\npredicted (ns)', 'error\n(%)', 'speedup\n(parallel)', 'speedup\n(serial)', 'coverage\n(%)' ], tablefmt = 'pretty', floatfmt='.2f', colalign=('left', 'center', 'center', 'center', 'center', 'center', 'center')))
+      print(tabulate(res_tab, headers = [ 'application', 'runtime\nactual (ns)', 'runtime\npredicted (ns)', 'error\n(%)', 'speedup\n(parallel)', 'speedup\n(serial)', 'coverage\n(%)' ], tablefmt = 'pretty', floatfmt='.2f', colalign=('left', 'center', 'center', 'center', 'center', 'center', 'center')))
     else:
-      print (tabulate(res_tab, headers = [ 'application', 'runtime\npredicted (ns)', 'coverage\n(%)' ], tablefmt = 'pretty', floatfmt='.2f', colalign=('left', 'center', 'center')))
+      print(tabulate(res_tab, headers = [ 'application', 'runtime\npredicted (ns)', 'coverage\n(%)' ], tablefmt = 'pretty', floatfmt='.2f', colalign=('left', 'center', 'center')))
     print

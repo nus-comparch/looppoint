@@ -1,4 +1,4 @@
-UBUNTU_VERSION?=18.04
+UBUNTU_VERSION?=24.04
 TOOL?=looppoint
 DOCKER_IMAGE?=ubuntu:$(UBUNTU_VERSION)-$(TOOL)
 DOCKER_FILE?=Dockerfile-ubuntu-$(UBUNTU_VERSION)
@@ -9,9 +9,9 @@ DOCKER_BUILD_OPT?=
 TZFULL=$(subst /, ,$(shell readlink /etc/localtime))
 TZ=$(word $(shell expr $(words $(TZFULL)) - 1 ),$(TZFULL))/$(word $(words $(TZFULL)),$(TZFULL))
 
-export CC := gcc-9
-export CXX := g++-9
-export SDE_BUILD_KIT := ${PWD}/tools/sde-external-9.14.0-2022-10-25-lin
+export CC := gcc
+export CXX := g++
+export SDE_BUILD_KIT := ${PWD}/tools/sde-external-9.44.0-2024-08-22-lin
 
 SNIPER_GIT_REPO?=https://github.com/snipersim/snipersim.git
 
@@ -41,10 +41,10 @@ pinkit:
 	fi
 
 sdekit:
-	@if [ ! -d "tools/sde-external-9.14.0-2022-10-25-lin" ]; then \
+	@if [ ! -d "tools/sde-external-9.44.0-2024-08-22-lin" ]; then \
 		$(info Downloading SDE kit) \
-		wget -O - https://snipersim.org/packages/sde-external-9.14.0-2022-10-25-lin.tar.xz  --no-check-certificate | tar -xf - -J -C tools/ ; \
-		cp -r tools/pinplay-scripts tools/sde-external-9.14.0-2022-10-25-lin/ ; \
+        wget -O - https://snipersim.org/packages/sde-external-9.44.0-2024-08-22-lin.tar.xz  --no-check-certificate | tar -xf - -J -C tools/ ; \
+		cp -r tools/pinplay-scripts tools/sde-external-9.44.0-2024-08-22-lin/ ; \
 	fi
 
 looppoint: sdekit

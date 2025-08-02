@@ -1,35 +1,35 @@
 #!/usr/bin/env python3
-
-#BEGIN_LEGAL
-# BSD License
+#BEGIN_LEGAL 
+#BSD License 
 #
-# Copyright (c)2019 Intel Corporation. All rights reserved.
+#Copyright (c)2022 Intel Corporation. All rights reserved.
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are
-# met:
+#Redistribution and use in source and binary forms, with or without modification, 
+# are permitted provided that the following conditions are met:
 #
-# Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.  Redistributions
-# in binary form must reproduce the above copyright notice, this list of
-# conditions and the following disclaimer in the documentation and/or
-# other materials provided with the distribution.  Neither the name of
-# the Intel Corporation nor the names of its contributors may be used to
-# endorse or promote products derived from this software without
-# specific prior written permission.
+#1. Redistributions of source code must retain the above copyright notice, 
+#   this list of conditions and the following disclaimer.
 #
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-# ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE INTEL OR
-# ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-# END_LEGAL
+#2. Redistributions in binary form must reproduce the above copyright notice, 
+#   this list of conditions and the following disclaimer in the documentation 
+#   and/or other materials provided with the distribution.
+#
+#3. Neither the name of the copyright holder nor the names of its contributors 
+#   may be used to endorse or promote products derived from this software without 
+#   specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED.
+# IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+# INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+# LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+# OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#END_LEGAL
 
 # Print out messages, including error messages
 #
@@ -270,7 +270,7 @@ class Phases(object):
 
         # Only delete the whole program pinball directory if it was not
         # specified by the user in a previous run of the scripts or the user
-        # gave the option '--delete_wp'.
+        # gave the option '--delete_wp'. 
         #
         # import pdb;  pdb.set_trace()
         if (hasattr(config, 'whole_pgm_dir') and config.whole_pgm_dir == '') or \
@@ -734,7 +734,7 @@ class Phases(object):
             #import pdb;  pdb.set_trace()
             bb_file_prefix = os.path.join(data_dir, basename)
             icount_list = util.ProcessAllFiles(options,data_dir,
-                "Dynamic instruction count", '.bb', 't.bb',
+                "Dynamic instruction count", '.bb', 't.bb', 
                  util.FindDynamicICount)
             max_icount = 0
             max_icount_tid = 0
@@ -747,7 +747,7 @@ class Phases(object):
                     max_icount_tid = int(field_tid)
             if config.global_regions:
                 if not options.list:
-                    msg.PrintMsgPlus('Using global BB vector file')
+                    msg.PrintMsgPlus('Using global BB vector file') 
                 path_bb_file = os.path.join(data_dir, basename) + '.global.bb'
                 triggering_tid = 'global'
             elif config.focus_thread >= 0:
@@ -801,13 +801,11 @@ class Phases(object):
         cmd += ' -f ' + str(triggering_tid)
 
         # Add either the default options used to configure Simpoints or the
-        # Simpoint options from the user.
+        # Simpoint options from the user. 
         #
         # import pdb;  pdb.set_trace()
-        if options.dimensions:
-            cmd += ' --dimensions ' + str(config.dimensions)
-        if options.global_regions:
-            cmd += ' --global_regions '
+        if options.global_regions: 
+            cmd += ' --global_regions ' 
         if options.simpoint_options == '':
             cmd += ' --maxk ' + str(config.maxk)
             cmd += ' --cutoff ' + str(config.cutoff)
@@ -905,7 +903,7 @@ class Phases(object):
     # required number of instructions (warmup+region). The outer loop detects
     # both cases. It generates a new CSV file with only the regions which need
     # to be relogged and executes the inner loop again.
-    #
+    # 
     ##################################################################
 
     # Maximum number of clusters for this tracing instance.
@@ -1181,7 +1179,7 @@ class Phases(object):
         if hasattr(options, 'pccount_regions') and options.pccount_regions:
             cmd += ' ' + self.kit_obj.knob_pcregions_in + ' ' + in_file
             cmd += ' ' + self.kit_obj.knob_pcregions_out + ' ' + out_file
-            cmd += ' ' + self.kit_obj.knob_pcregions_merge_warmup
+            cmd += ' ' + self.kit_obj.knob_pcregions_merge_warmup 
         elif hasattr(options, 'icount_regions') and options.icount_regions:
             cmd += ' ' + self.kit_obj.knob_iregions_in + ' ' + in_file
             cmd += ' ' + self.kit_obj.knob_iregions_out + ' ' + out_file
@@ -1265,7 +1263,7 @@ class Phases(object):
 
         # Get the maximum number of clusters in each CSV file in class
         # attribute 'self.max_num_clusters'.  Need to re-initialize it to 0
-        # as it may have been set in method MultiIterGenRegionPinballs().
+        # as it may have been set in method MultiIterGenRegionPinballs().  
         # Call with no_glob = True
         #
         # import pdb;  pdb.set_trace()
@@ -1284,7 +1282,7 @@ class Phases(object):
 
         # Get the first set of region CSV files from the *.Data directories.
         # The method self.GetFirstRegionCSV puts the list of pinballs to be
-        # processed in the class attribute 'self.pb_list'.
+        # processed in the class attribute 'self.pb_list'.  
         # Call with no_glob = True
         #
         # import pdb;  pdb.set_trace()
@@ -1674,7 +1672,7 @@ class Phases(object):
                     # Save the files from the previous interation and
                     # generate the new CSV file with the missing clusters.
                     #
-                    result = self.WriteMissingClusters(new_clusters,
+                    result = self.WriteMissingClusters(new_clusters, 
                                                 new_warmup_records,  wp_pb,
                                                 iteration, options)
                     if result != 0:

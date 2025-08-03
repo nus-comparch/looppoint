@@ -123,6 +123,7 @@ _Note:_ Cannot be used alongside `-p` or `--program`. More details [here](#runni
 * `--no-validate`: Skip full program simulation and display only the sampled simulation result (used along with `--force`)
 * `--no-flowcontrol`: Disable thread flowcontrol during profiling
 * `--use-pinplay`: Use PinPlay instead of SDE for profiling
+* `--pinball-analysis`: Use deterministic analysis with pinballs instead of binary runs
 * `--native`: Run the application natively
 Note that SPEC applications and default results are not included in the open version.
 

@@ -514,8 +514,8 @@ class SimPoint(object):
             import locale
             locale.setlocale(locale.LC_ALL, "")
             msg.PrintAndExit('Slice size is greater than the number of instructions.  Reduce parameter \'slice_size\'.' + \
-                '\nInstruction count: ' + locale.format('%14d', int(instr_count), True) + \
-                '\nSlice size:        ' + locale.format('%14d', int(slice_size), True))
+                '\nInstruction count: ' + locale.format_string('%14d', int(instr_count)) + \
+                '\nSlice size:        ' + locale.format_string('%14d', int(slice_size)))
 
         if options.ldv:
             # Run to generate regions CSV file using both BBV and LDV files.

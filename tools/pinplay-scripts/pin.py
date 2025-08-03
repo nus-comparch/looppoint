@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-#BEGIN_LEGAL 
-#BSD License 
+#BEGIN_LEGAL
+#BSD License
 #
 #Copyright (c)2022 Intel Corporation. All rights reserved.
 #
-#Redistribution and use in source and binary forms, with or without modification, 
+#Redistribution and use in source and binary forms, with or without modification,
 # are permitted provided that the following conditions are met:
 #
-#1. Redistributions of source code must retain the above copyright notice, 
+#1. Redistributions of source code must retain the above copyright notice,
 #   this list of conditions and the following disclaimer.
 #
-#2. Redistributions in binary form must reproduce the above copyright notice, 
-#   this list of conditions and the following disclaimer in the documentation 
+#2. Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
 #   and/or other materials provided with the distribution.
 #
-#3. Neither the name of the copyright holder nor the names of its contributors 
-#   may be used to endorse or promote products derived from this software without 
+#3. Neither the name of the copyright holder nor the names of its contributors
+#   may be used to endorse or promote products derived from this software without
 #   specific prior written permission.
 #
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
-# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
 # DISCLAIMED.
 # IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
@@ -39,7 +39,7 @@ import traceback
     # debugger-shell expects all tokens to be space-delimited. Therefore,
     # expressions like [%rbp-8] must be generated in monitor commands as
     # '[ %rbp + -8 ]'
-    # Also, gdb output from 'info scope' displays register names with a 
+    # Also, gdb output from 'info scope' displays register names with a
     # leading '$' while the monitor commands in debugger-shell expect '%'.
     # This means that $rbp must be changed to %rbp
 
@@ -48,26 +48,26 @@ showTraceback = True
     # Set to True to show 'monitor' commands passed to gdb
 showCommand = True
 
-    # Precompile regular expressions used in functions below 
-addrExpr = "^Line \d+ .*is at address (0x[0-9a-fA-F]+).*but contains no code.*$"
+    # Precompile regular expressions used in functions below
+addrExpr = r"^Line \d+ .*is at address (0x[0-9a-fA-F]+).*but contains no code.*$"
 addrExprMatcher = re.compile(addrExpr)
-addrRangeExpr = "^Line \d+ .* starts at address (0x[0-9a-fA-F]+) .* ends at (0x[0-9a-fA-F]+) .*"
+addrRangeExpr = r"^Line \d+ .* starts at address (0x[0-9a-fA-F]+) .* ends at (0x[0-9a-fA-F]+) .*"
 addrRangeMatcher = re.compile(addrRangeExpr)
-symbolMatchExpr = "^Symbol ([_a-zA-Z][_0-9a-zA-Z]*) (.*)$"
+symbolMatchExpr = r"^Symbol ([_a-zA-Z][_0-9a-zA-Z]*) (.*)$"
 symbolMatcher = re.compile(symbolMatchExpr)
-varInfoExpr = ".*is .* \$([a-z]+) offset ([0-9]+)\+([\+\-]?[0-9]+), length ([0-9]+).*$"
+varInfoExpr = r".*is .* \$([a-z]+) offset ([0-9]+)\+([\+\-]?[0-9]+), length ([0-9]+).*$"
 varInfoMatcher = re.compile(varInfoExpr)
-rangeExpr = ".*Range (0x[0-9a-fA-F]+)-(0x[0-9a-fA-F]+): (.*)$"
+rangeExpr = r".*Range (0x[0-9a-fA-F]+)-(0x[0-9a-fA-F]+): (.*)$"
 rangeMatcher = re.compile(rangeExpr)
-varLengthExpr = "^, length ([0-9]+)\..*$"
+varLengthExpr = r"^, length ([0-9]+)\..*$"
 varLengthMatcher = re.compile(varLengthExpr)
-dwarfExprPrefix = "^\s+[0-9a-fA-F]+: "
+dwarfExprPrefix = r"^\s+[0-9a-fA-F]+: "
 dwarfExprPrefixMatcher = re.compile(dwarfExprPrefix)
-functionNameExpr = "^Line .*starts at address .*<([_a-zA-Z:][_0-9a-zA-Z:]*).*$"
+functionNameExpr = r"^Line .*starts at address .*<([_a-zA-Z:][_0-9a-zA-Z:]*).*$"
 functionNameMatcher = re.compile(functionNameExpr, flags=re.DOTALL)
-variableNameExpr = "[_a-zA-Z][_0-9a-zA-Z]*"
+variableNameExpr = r"[_a-zA-Z][_0-9a-zA-Z]*"
 variableNameMatcher = re.compile(variableNameExpr)
-staticVariableExpr = "is.*static storage at address (0x[0-9a-fA-F]+).*"
+staticVariableExpr = r"is.*static storage at address (0x[0-9a-fA-F]+).*"
 staticVariableMatcher = re.compile(staticVariableExpr)
 
 def commonParse(command, args):
@@ -209,10 +209,10 @@ def rewriteRegister(register, startAddress):
 
         # If the register in the location expression is the stack pointer,
         # then the reference cannot be relied on since the stack pointer is
-        # modified in the function prolog. Therefore the stack pointer 
+        # modified in the function prolog. Therefore the stack pointer
         # register name must be prefixed with the corresponding function entry
         # address as a marker to debugger-shell so it can resolve the reference
-        #  Note that this function expects a register name without '$' or '%' 
+        #  Note that this function expects a register name without '$' or '%'
         # and it always inserts the '%' just before the register name
     if register == "rsp" or register == "esp":
             # Get function name by invoking 'info line' for starting address and
@@ -291,14 +291,14 @@ def parseDwarfExpression(variableName, variableLength, address, lines,
             target = "[ " + functionAddress + " : " + "%rsp-c + " + \
                      tokens[2] + " ]"
         elif tokens[1] != "DW_OP_stack_value":
-                # The DWARF opcode does not represent a 
+                # The DWARF opcode does not represent a
                 # specific register or memory address, so
                 # it invalidates the target in the case where
                 # the value of the register or memory
                 # location is important (pin break ...)
             validTarget = False
         index = index + 1
-        
+
         # If target is a register then no variable length is returned
     if validTarget:
         if target[0] == "%":
@@ -340,7 +340,7 @@ def resolveScopedVariable(variableName, rangeStart, rangeEnd):
             return resolveVariable(variableName)
 
             # Find the end index for the set of lines describing this symbol
-            # Any further processing occurs only for lines between index and 
+            # Any further processing occurs only for lines between index and
             # endIndex - 1
         endIndex = index + 1
         while endIndex < len(lines):
@@ -353,7 +353,7 @@ def resolveScopedVariable(variableName, rangeStart, rangeEnd):
             raise gdb.GdbError("ERROR: Symbol %s has been optimized out." %
                                variableName)
 
-            # Try to match to line like 
+            # Try to match to line like
             # 'is a variable at frame base reg $rbp offset 16+-80, length 4.'
         match = varInfoMatcher.match(symbolType)
         if match:
@@ -372,7 +372,7 @@ def resolveScopedVariable(variableName, rangeStart, rangeEnd):
                 break
             lengthIndex = lengthIndex + 1
 
-        if (symbolType.startswith("the constant") or 
+        if (symbolType.startswith("the constant") or
                 symbolType.startswith("is constant bytes")):
             raise gdb.GdbError(
                   "ERROR: Variable %s is a constant at specified location" %
@@ -416,7 +416,7 @@ def resolveScopedVariable(variableName, rangeStart, rangeEnd):
                                         rangeStart, lines, index + 1)
     except gdb.error:
         reason = sys.exc_info()
-        raise gdb.GdbError("ERROR: Error getting variable address: %s" % 
+        raise gdb.GdbError("ERROR: Error getting variable address: %s" %
                            reason[1])
 
 def substituteLineAddress(args, index):
@@ -504,7 +504,7 @@ def handleBreakAt(args):
 class SliceCommand(gdb.Command):
     """Create a program slice
 
-    pin slice <instance> <thread> 
+    pin slice <instance> <thread>
                { <variableName> | %<register> | <address> <length> } at
                { <sourceLocation> | *<startAddress> *<endAddress> }
 
@@ -528,7 +528,7 @@ class SliceCommand(gdb.Command):
     def invoke(self, argList, from_tty):
         """Top level handler for the slice command"""
 
-            # Don't repeat the command if the user presses enter. That just 
+            # Don't repeat the command if the user presses enter. That just
             # generates duplicate slice files
         super(SliceCommand, self).dont_repeat()
         args = gdb.string_to_argv(argList)
@@ -537,7 +537,7 @@ class SliceCommand(gdb.Command):
 class ForwardSliceCommand(gdb.Command):
     """Create a program forward slice
 
-    pin forward-slice <instance> <thread> 
+    pin forward-slice <instance> <thread>
                { <variableName> | %<register> | <address> <length> } at
                { <sourceLocation> | *<startAddress> *<endAddress> }
 
@@ -561,7 +561,7 @@ class ForwardSliceCommand(gdb.Command):
     def invoke(self, argList, from_tty):
         """Top level handler for the forward slice command"""
 
-            # Don't repeat the command if the user presses enter. That just 
+            # Don't repeat the command if the user presses enter. That just
             # generates duplicate slice files
         super(ForwardSliceCommand, self).dont_repeat()
         args = gdb.string_to_argv(argList)
@@ -570,7 +570,7 @@ class ForwardSliceCommand(gdb.Command):
 class BackwardSliceCommand(gdb.Command):
     """Create a program backward slice
 
-    pin backward-slice <instance> <thread> 
+    pin backward-slice <instance> <thread>
                { <variableName> | %<register> | <address> <length> } at
                { <sourceLocation> | *<startAddress> *<endAddress> }
 
@@ -594,7 +594,7 @@ class BackwardSliceCommand(gdb.Command):
     def invoke(self, argList, from_tty):
         """Top level handler for the slice command"""
 
-            # Don't repeat the command if the user presses enter. That just 
+            # Don't repeat the command if the user presses enter. That just
             # generates duplicate slice files
         super(BackwardSliceCommand, self).dont_repeat()
         args = gdb.string_to_argv(argList)
@@ -642,7 +642,7 @@ class PruneCommand(gdb.Command):
                                   args[1])
                 try:
                     execute("monitor prune %s %s %s" % (args[0],
-                            variableAddress, variableLength)) 
+                            variableAddress, variableLength))
                 except gdb.error:
                     reason = sys.exc_info()
                     raise gdb.GdbError("ERROR: Error pruning slice: %s" %
@@ -677,7 +677,7 @@ class RecordCommand(gdb.Command):
     def invoke(self, option, from_tty):
         """Top level handler for the record command"""
 
-            # Don't repeat the command if the user presses enter. That just 
+            # Don't repeat the command if the user presses enter. That just
             # causes an error
         super(RecordCommand, self).dont_repeat()
         if option == "on" or option == "off":
@@ -695,11 +695,11 @@ class TraceCommand(gdb.Command):
     """Monitor variable at a specified instruction address
     pin trace { <variable> | %<register> | <variableAddress> <length> } at
                { <sourceLine> | *<instructionAddress> }
-    pin trace %<register> if load from 
+    pin trace %<register> if load from
                { <variable> | %<register> | <variableAddress> }
-    pin trace %<register> if store to 
+    pin trace %<register> if store to
                { <variable> | %<register> | <variableAddress> }
-    pin trace %<register> before load from 
+    pin trace %<register> before load from
                { <variable> | %<register> | <variableAddress> } == <value>
     pin trace %<register> after store to
                { <variable> | %<register> | <variableAddress> } == <value>
@@ -728,7 +728,7 @@ class TraceCommand(gdb.Command):
     def invoke(self, argList, from_tty):
         """Top level handler for the trace command"""
 
-            # Don't repeat the command if the user presses enter. 
+            # Don't repeat the command if the user presses enter.
         super(TraceCommand, self).dont_repeat()
         args = gdb.string_to_argv(argList)
         argc = len(args)
@@ -746,7 +746,7 @@ class TraceCommand(gdb.Command):
                 reason = sys.exc_info()
                 raise gdb.GdbError("ERROR: Error handling trace command: %s" %
                                    reason[1])
-        
+
 class BreakCommand(gdb.Command):
     """Set a Pin conditional breakpoint
 
@@ -754,7 +754,7 @@ class BreakCommand(gdb.Command):
          { <variable> | %<register> | <variableAddress> <length> } == <value>
     pin break if load from { <variable> | %<register> | <variableAddress> }
     pin break if store to { <variable> | %<register> | <variableAddress> }
-    pin break before load from 
+    pin break before load from
          { <variable> | %<register> | <variableAddress> } == <value>
     pin break after store to
          { <variable> | %<register> | <variableAddress> } == <value>
@@ -782,7 +782,7 @@ class BreakCommand(gdb.Command):
     def invoke(self, argList, from_tty):
         """Top level handler for the break command"""
 
-            # Don't repeat the command if the user presses enter. 
+            # Don't repeat the command if the user presses enter.
         super(BreakCommand, self).dont_repeat()
         args = gdb.string_to_argv(argList)
         argc = len(args)

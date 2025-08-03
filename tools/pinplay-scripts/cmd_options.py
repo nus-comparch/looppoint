@@ -174,7 +174,7 @@ def CallbackList(option, opt_str, value, parser):
             # into spearate strings.  Each of the resultings strings is added to
             # 'option'.
             #
-            arg = re.split('\s|,', arg)
+            arg = re.split(r'\s|,', arg)
             args += arg
             num_found += 1
             break

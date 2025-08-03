@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-#BEGIN_LEGAL 
-#BSD License 
+#BEGIN_LEGAL
+#BSD License
 #
 #Copyright (c)2022 Intel Corporation. All rights reserved.
 #
-#Redistribution and use in source and binary forms, with or without modification, 
+#Redistribution and use in source and binary forms, with or without modification,
 # are permitted provided that the following conditions are met:
 #
-#1. Redistributions of source code must retain the above copyright notice, 
+#1. Redistributions of source code must retain the above copyright notice,
 #   this list of conditions and the following disclaimer.
 #
-#2. Redistributions in binary form must reproduce the above copyright notice, 
-#   this list of conditions and the following disclaimer in the documentation 
+#2. Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
 #   and/or other materials provided with the distribution.
 #
-#3. Neither the name of the copyright holder nor the names of its contributors 
-#   may be used to endorse or promote products derived from this software without 
+#3. Neither the name of the copyright holder nor the names of its contributors
+#   may be used to endorse or promote products derived from this software without
 #   specific prior written permission.
 #
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
-# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
 # DISCLAIMED.
 # IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
@@ -65,7 +65,7 @@ def PrintAndExit(msg):
 
 def PrintMsg(msg):
     """
-    Prints an message 
+    Prints an message
     """
     sys.stdout.write(msg)
     sys.stdout.write("\n")
@@ -73,7 +73,7 @@ def PrintMsg(msg):
 
 def PrintMsgNoCR(msg):
     """
-    Prints an message 
+    Prints an message
     """
     sys.stdout.write(msg)
     sys.stdout.flush()
@@ -230,7 +230,7 @@ def GetSlice(fp):
     if line == 'T\n':
         fv.append((0, 0))
     else:
-        blocks = re.findall(':\s*(\d+)\s*:\s*(\d+)\s*', line)
+        blocks = re.findall(r':\s*(\d+)\s*:\s*(\d+)\s*', line)
         # print 'Slice:'
         for block in blocks:
             # print block
@@ -244,7 +244,7 @@ def GetSlice(fp):
 
 def GetMarker(fp):
     """
-    Get the marker ("S:") or ("M:") for one slice 
+    Get the marker ("S:") or ("M:") for one slice
 
     Marker data format:
         "S:" marker count  < other info >
@@ -376,7 +376,7 @@ def CreateEndPCbbid_dict(inmarkerPClist):
     markerPClist = []
     #region nos. could be non-contiguous and certain 'i's could be 'None'
     for i in inmarkerPClist:
-      if i and i['pc'] not in markerPClist: 
+      if i and i['pc'] not in markerPClist:
         markerPClist.append(i['pc'])
     markerpcbbid_dict = {}
 
@@ -404,7 +404,7 @@ def ProcessLabelFile(fp_lbl):
     @return an array mapping 'sliceN' to the cluster it belongs to
     """
 
-    sliceCluster = [] 
+    sliceCluster = []
     sliceNum=0
     line = ensure_string(fp_lbl.readline())
     while line:
@@ -459,7 +459,7 @@ def GetWeights(fp):
     # 3) This matches a decimal number with one, or more digits:
     #   \d+
     #
-    pattern = '(-?\ *[0-9]+\.?[0-9]*(?:[Ee]\ *-?\ *[0-9]+)?)\s(\d+)'
+    pattern = r'(-?\ *[0-9]+\.?[0-9]*(?:[Ee]\ *-?\ *[0-9]+)?)\s(\d+)'
 
     weight_dict = {}
     for line in ensure_string(fp.readlines()):
@@ -469,7 +469,7 @@ def GetWeights(fp):
         # without the decimal char '.'.  This should be the weight of '1'.
         #
         if not field:
-            field = re.match('(\d)\s(\d)', line)
+            field = re.match(r'(\d)\s(\d)', line)
         if field:
             weight = float(field.group(1))
             region = int(field.group(2))
@@ -488,7 +488,7 @@ def GetSimpoints(fp):
     RegionToSlice = {}
     max_region_number = 0
     for line in ensure_string(fp.readlines()):
-        field = re.match('(\d+)\s(\d+)', line)
+        field = re.match(r'(\d+)\s(\d+)', line)
         if field:
             slice_num = int(field.group(1))
             region = int(field.group(2))
@@ -507,7 +507,7 @@ def GetWarmuppoints(fp, wfactor):
 
     WarmupRegionToSlice = {}
     for line in ensure_string(fp.readlines()):
-        field = re.match('(\d+)\s(\d+)', line)
+        field = re.match(r'(\d+)\s(\d+)', line)
         if field:
             slice_num = int(field.group(1))
             region = int(field.group(2))
@@ -522,7 +522,7 @@ def GetRegionBBV(fp, RegionToSlice, max_region_number, sliceCluster):
     in generating CSV regions.
 
     @return cumulative_icount, region_bbv, region_start_markers, region_end_markers, region_end_marker_relativecount, first_bb_marker
-    
+
     """
     slice_set = set(RegionToSlice.values())
 
@@ -534,7 +534,7 @@ def GetRegionBBV(fp, RegionToSlice, max_region_number, sliceCluster):
     #import pdb;  pdb.set_trace()
 
     # List of lists of basic block vectors, each inner list contains the blocks for one of the
-    # representative regions. 
+    # representative regions.
     #
     region_bbv = [None] * num_regions
 
@@ -543,10 +543,10 @@ def GetRegionBBV(fp, RegionToSlice, max_region_number, sliceCluster):
     first_bb_marker = current_marker
     previous_marker = {}
 
-    # List of start markers for representative regions. 
+    # List of start markers for representative regions.
     region_start_markers = [None] * num_regions
 
-    # List of start markers for representative regions. 
+    # List of start markers for representative regions.
     region_end_markers = [None] * num_regions
 
     region_slice = [None] * num_regions
@@ -603,13 +603,13 @@ def GetRegionBBV(fp, RegionToSlice, max_region_number, sliceCluster):
         if slice_num in slice_set:
             #import pdb;  pdb.set_trace()
             clusterid = sliceCluster[slice_num]
-            region_start_markers[clusterid] = previous_marker 
-            region_end_markers[clusterid] = current_marker 
-            region_bbv[clusterid] = fv 
+            region_start_markers[clusterid] = previous_marker
+            region_end_markers[clusterid] = current_marker
+            region_bbv[clusterid] = fv
             startPC = previous_marker['pc']
             endPC = current_marker['pc']
-            relendPCcount = 1 
-            # endPC is going to be executed in the next slice 
+            relendPCcount = 1
+            # endPC is going to be executed in the next slice
             ##endPCbbidlist = pcbblist_dict[endPC]
             #  now, add executions of endPC in the current slice
             #FIXME : do we need special action if startPC==endPC?
@@ -619,28 +619,28 @@ def GetRegionBBV(fp, RegionToSlice, max_region_number, sliceCluster):
             # in the pinball. So, till precise logging becomes the default
             # we will continue to decrease relendPCcount by 1
             ##if startPC == endPC:
-                ##relendPCcount = 0 
+                ##relendPCcount = 0
             ##for bbidpair in endPCbbidlist:
                 ##thisitem = [item for item in fv if item[0] == bbidpair[0] ]
                 ##if not thisitem:
                     ##continue # another bbidpair may match
-                ##thispair = thisitem[0] 
-                ##thiscount = thispair[1] 
-                ##bbidsticount = bbidpair[1] 
+                ##thispair = thisitem[0]
+                ##thiscount = thispair[1]
+                ##bbidsticount = bbidpair[1]
                 ##thisPCcount = thiscount/bbidsticount
                 ##relendPCcount += thisPCcount
-            region_end_marker_relativecount[clusterid] = relendPCcount 
+            region_end_marker_relativecount[clusterid] = relendPCcount
         slice_num += 1
 
     pcbblist_info = CreateEndPCbbid_dict(region_end_markers)
     #import pdb;  pdb.set_trace()
     total_num_slices = len(cumulative_icount)
-    for region in sorted(RegionToSlice.keys()): 
+    for region in sorted(RegionToSlice.keys()):
         endPC = region_end_markers[region]['pc']
         startPC = region_start_markers[region]['pc']
         endPCbbidlist = pcbblist_info[endPC]
-        relendPCcount = 1 
-        # endPC is going to be executed in the next slice 
+        relendPCcount = 1
+        # endPC is going to be executed in the next slice
         #  now, add executions of endPC in the current slice
         #FIXME : do we need special action if startPC==endPC?
         # relative count is used for region pinball replay
@@ -649,17 +649,17 @@ def GetRegionBBV(fp, RegionToSlice, max_region_number, sliceCluster):
         # in the pinball. So, till precise logging becomes the default
         # we will continue to decrease relendPCcount by 1
         if startPC == endPC:
-          relendPCcount = 0 
+          relendPCcount = 0
         for bbidpair in endPCbbidlist:
           thisitem = [item for item in region_bbv[region] if item[0] == bbidpair[0] ]
           if not thisitem:
             continue # another bbidpair may match
-          thispair = thisitem[0] 
-          thiscount = thispair[1] 
-          bbidsticount = bbidpair[1] 
+          thispair = thisitem[0]
+          thiscount = thispair[1]
+          bbidsticount = bbidpair[1]
           thisPCcount = thiscount/bbidsticount
           relendPCcount += thisPCcount
-          region_end_marker_relativecount[region] = relendPCcount 
+          region_end_marker_relativecount[region] = relendPCcount
         multiplier = float(cluster_icount[region])/float(run_sum)*total_num_slices
         region_multiplier[region] = multiplier
     return cumulative_icount, cluster_icount, cluster_slicecount, region_bbv, region_multiplier, region_start_markers, region_end_markers, region_end_marker_relativecount, first_bb_marker
@@ -670,7 +670,7 @@ def GetWarmupRegionBBV(fp, WarmupRegionToSlice, RegionToSlice, max_region_number
     basic block vector file.  Put the data into a set of lists which are used
     in generating CSV regions.
 
-    @return warmup_region_start_markers, warmup_region_end_markers, warmup_region_end_marker_relativecount  
+    @return warmup_region_start_markers, warmup_region_end_markers, warmup_region_end_marker_relativecount
     """
     slice_set = set(WarmupRegionToSlice.values())
 
@@ -683,10 +683,10 @@ def GetWarmupRegionBBV(fp, WarmupRegionToSlice, RegionToSlice, max_region_number
     previous_marker = {}
 
 
-    # List of start markers for representative regions. 
+    # List of start markers for representative regions.
     region_start_markers = [None] * num_regions
 
-    # List of start markers for representative regions. 
+    # List of start markers for representative regions.
     region_end_markers = [None] * num_regions
 
     regionslice = [None] * int(wfactor)
@@ -711,7 +711,7 @@ def GetWarmupRegionBBV(fp, WarmupRegionToSlice, RegionToSlice, max_region_number
       if wslice < 0:
         #This is a 'short' warmup region
         # warmup will start at slice0
-        # Note where it will end: it should end at the slice 
+        # Note where it will end: it should end at the slice
         #  when the corresponding simulation region starts
         region_slice = RegionToSlice[region_number]
         SliceToRegionForShortWarmup[region_slice-1] = region_number
@@ -720,7 +720,7 @@ def GetWarmupRegionBBV(fp, WarmupRegionToSlice, RegionToSlice, max_region_number
         region_slice = RegionToSlice[region_number]
         StartSliceToRegionForRegularWarmup[wslice] = region_number
         EndSliceToRegionForRegularWarmup[region_slice-1] = region_number
-        
+
     OrderedSliceToRegionForShortWarmup = OrderedDict(sorted(SliceToRegionForShortWarmup.items()))
     OrderedStartSliceToRegionForRegularWarmup = OrderedDict(sorted(StartSliceToRegionForRegularWarmup.items()))
     OrderedEndSliceToRegionForRegularWarmup = OrderedDict(sorted(EndSliceToRegionForRegularWarmup.items()))
@@ -773,10 +773,10 @@ def GetWarmupRegionBBV(fp, WarmupRegionToSlice, RegionToSlice, max_region_number
           WarmupRegionFVs[t_region_number] = regionslice[0:int(wfactor)]
         slice_num += 1
 
-    # now set region_end_marker_relativecount[] 
+    # now set region_end_marker_relativecount[]
     pcbblist_info = CreateEndPCbbid_dict(region_end_markers)
     #import pdb;  pdb.set_trace()
-    for region in list(WarmupRegionToSlice.keys()): 
+    for region in list(WarmupRegionToSlice.keys()):
       if region_end_markers[region] is None:
         # end marker was not set for this region
         # which means its end_slice must be < 0
@@ -786,22 +786,22 @@ def GetWarmupRegionBBV(fp, WarmupRegionToSlice, RegionToSlice, max_region_number
         continue
       startPC = region_start_markers[region]['pc']
       endPC = region_end_markers[region]['pc']
-      endPCcount = 0 
+      endPCcount = 0
       endPCbbidlist = pcbblist_info[endPC]
       #FIXME : do we need special action if startPC==endPC?
-      for thisbbv in WarmupRegionFVs[region]:  
+      for thisbbv in WarmupRegionFVs[region]:
         for bbidpair in endPCbbidlist:
           thisitem = [item for item in thisbbv if item[0] == bbidpair[0] ]
           if not thisitem:
             continue # another bbidpair may match
-          thispair = thisitem[0] 
-          thiscount = thispair[1] 
-          bbidsticount = bbidpair[1] 
+          thispair = thisitem[0]
+          thiscount = thispair[1]
+          bbidsticount = bbidpair[1]
           thisPCcount = thiscount/bbidsticount
           endPCcount += thisPCcount
       region_end_marker_relativecount[region] = endPCcount
     #import pdb;  pdb.set_trace()
-    return cumulative_icount, region_start_markers, region_end_markers, region_end_marker_relativecount 
+    return cumulative_icount, region_start_markers, region_end_markers, region_end_marker_relativecount
 
 
 
@@ -833,7 +833,7 @@ def GenRegionCSV(fp_bbv, fp_simp, fp_weight, warmup_factor, sliceCluster, argtid
     # Error check the regions.
     #
     tid = 0
-    if argtid is not None: 
+    if argtid is not None:
       if argtid == 'global':
         tid = 'global'
       else:
@@ -859,7 +859,7 @@ def GenRegionCSV(fp_bbv, fp_simp, fp_weight, warmup_factor, sliceCluster, argtid
     PrintMsg('')
 
     total_icount = 0
-    for region in sorted(RegionToSlice.keys()): 
+    for region in sorted(RegionToSlice.keys()):
         # Calculate the info for the regions and print it.
         #
         slice_num = RegionToSlice[region]
@@ -880,8 +880,8 @@ def GenRegionCSV(fp_bbv, fp_simp, fp_weight, warmup_factor, sliceCluster, argtid
         total_icount += length
         PrintMsg('# RegionId = %d Slice = %d Icount = %d Length = %d Weight = %.5f Multiplier = %.3f ClusterSlicecount = %d ClusterIcount = %d' % \
             (region + 1, slice_num, start_icount, length, weight, region_multiplier[region], cluster_slicecount[region], cluster_icount[region]))
-        PrintMsg('#Start: pc : %s image: %s offset: %s absolute_count: %s  source-info: %s' % (start_marker['pc'], start_marker['imagename'], start_marker['offset'], start_marker['count'], start_marker['sourceinfo'])); 
-        PrintMsg('#End: pc : %s image: %s offset: %s absolute_count: %s  relative_count: %s source-info: %s' % (end_marker['pc'], end_marker['imagename'], end_marker['offset'], end_marker['count'],end_relativecount, end_marker['sourceinfo'])); 
+        PrintMsg('#Start: pc : %s image: %s offset: %s absolute_count: %s  source-info: %s' % (start_marker['pc'], start_marker['imagename'], start_marker['offset'], start_marker['count'], start_marker['sourceinfo']));
+        PrintMsg('#End: pc : %s image: %s offset: %s absolute_count: %s  relative_count: %s source-info: %s' % (end_marker['pc'], end_marker['imagename'], end_marker['offset'], end_marker['count'],end_relativecount, end_marker['sourceinfo']));
         if tid == 'global':
           PrintMsg('cluster %d from slice %d,%s,%d,%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%.5f,%.3f,%s\n' % \
             (region, slice_num, tid, region + 1, start_marker['pc'],start_marker['imagename'], start_marker['offset'], start_marker['count'],  end_marker['pc'], end_marker['imagename'], end_marker['offset'], end_marker['count'], end_relativecount, length, weight, region_multiplier[region], "simulation"))
@@ -898,7 +898,7 @@ def GenRegionCSV(fp_bbv, fp_simp, fp_weight, warmup_factor, sliceCluster, argtid
     fp_simp = OpenSimpointFile(args.region_file, 'simpoints file: ')
     total_icount = 0
     NumSimRegions = max_region_number + 1; #== max cluster id+1, 0-based with gaps
-    if warmup_factor is not None: 
+    if warmup_factor is not None:
         if int(warmup_factor) > 0:
             WarmupRegionToSlice = GetWarmuppoints(fp_simp, warmup_factor)
             cumulative_icount, warmup_region_start_markers, warmup_region_end_markers, warup_region_end_markers_relativecount = GetWarmupRegionBBV(fp_bbv, WarmupRegionToSlice, RegionToSlice, max_region_number, warmup_factor)
@@ -922,7 +922,7 @@ def GenRegionCSV(fp_bbv, fp_simp, fp_weight, warmup_factor, sliceCluster, argtid
                     # If this is the first slice, set the initial icount to 0
                     #
                     start_icount = 0
-                if wstart_marker is not None: 
+                if wstart_marker is not None:
                     if short_wfactor > 0:
                       end_icount = cumulative_icount[wslice_num + int(short_wfactor) - 1]
                     else:
@@ -935,8 +935,8 @@ def GenRegionCSV(fp_bbv, fp_simp, fp_weight, warmup_factor, sliceCluster, argtid
                     else:
                       PrintMsg('# RegionId = %d Slice = %d Icount = %d Length = %d WarmupFactor = %d ' % \
                       (wregion + NumSimRegions + 1, wslice_num, start_icount, length, int(warmup_factor)))
-                    PrintMsg('#Start: pc : %s image: %s offset: %s absolute_count: %s source-info: %s' % (wstart_marker['pc'], wstart_marker['imagename'], wstart_marker['offset'], wstart_marker['count'], wstart_marker['sourceinfo'])); 
-                    PrintMsg('#End: pc : %s image: %s offset: %s absolute_count: %s  relative_count: %s source-info: %s' % (wend_marker['pc'], wend_marker['imagename'], wend_marker['offset'], wend_marker['count'],wend_relativecount, wend_marker['sourceinfo'])); 
+                    PrintMsg('#Start: pc : %s image: %s offset: %s absolute_count: %s source-info: %s' % (wstart_marker['pc'], wstart_marker['imagename'], wstart_marker['offset'], wstart_marker['count'], wstart_marker['sourceinfo']));
+                    PrintMsg('#End: pc : %s image: %s offset: %s absolute_count: %s  relative_count: %s source-info: %s' % (wend_marker['pc'], wend_marker['imagename'], wend_marker['offset'], wend_marker['count'],wend_relativecount, wend_marker['sourceinfo']));
                     if tid == 'global':
                       PrintMsg('Warmup for regionid %d,%s,%d,%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%.5f,%.3f,%s:%d\n' % \
                       (wregion+1, tid, wregion + NumSimRegions + 1, wstart_marker['pc'], wstart_marker['imagename'], wstart_marker['offset'], wstart_marker['count'], wend_marker['pc'], wend_marker['imagename'], wend_marker['offset'], wend_marker['count'], wend_relativecount, length, 0.0, 0.0, "warmup",wregion+1))
@@ -944,7 +944,7 @@ def GenRegionCSV(fp_bbv, fp_simp, fp_weight, warmup_factor, sliceCluster, argtid
                       PrintMsg('Warmup for regionid %d,%d,%d,%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%.5f,%.3f,%s:%d\n' % \
                       (wregion+1, tid, wregion + NumSimRegions + 1, wstart_marker['pc'], wstart_marker['imagename'], wstart_marker['offset'], wstart_marker['count'], wend_marker['pc'], wend_marker['imagename'], wend_marker['offset'], wend_marker['count'], wend_relativecount, length, 0.0, 0.0, "warmup",wregion+1))
                 else:
-                    PrintMsg('# No warmup possible for regionid %d with WarmupFactor %d\n' % (wregion+1, int(warmup_factor))); 
+                    PrintMsg('# No warmup possible for regionid %d with WarmupFactor %d\n' % (wregion+1, int(warmup_factor)));
         # Print summary statistics
         #
         # import pdb;  pdb.set_trace()

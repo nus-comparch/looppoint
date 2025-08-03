@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-#BEGIN_LEGAL 
-#BSD License 
+#BEGIN_LEGAL
+#BSD License
 #
 #Copyright (c)2022 Intel Corporation. All rights reserved.
 #
-#Redistribution and use in source and binary forms, with or without modification, 
+#Redistribution and use in source and binary forms, with or without modification,
 # are permitted provided that the following conditions are met:
 #
-#1. Redistributions of source code must retain the above copyright notice, 
+#1. Redistributions of source code must retain the above copyright notice,
 #   this list of conditions and the following disclaimer.
 #
-#2. Redistributions in binary form must reproduce the above copyright notice, 
-#   this list of conditions and the following disclaimer in the documentation 
+#2. Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
 #   and/or other materials provided with the distribution.
 #
-#3. Neither the name of the copyright holder nor the names of its contributors 
-#   may be used to endorse or promote products derived from this software without 
+#3. Neither the name of the copyright holder nor the names of its contributors
+#   may be used to endorse or promote products derived from this software without
 #   specific prior written permission.
 #
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
-# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
 # DISCLAIMED.
 # IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
@@ -377,7 +377,7 @@ def GetSlice(fp):
     if line == 'T\n':
         fv.append((0, 0))
     else:
-        blocks = re.findall(':\s*(\d+)\s*:\s*(\d+)\s*', line)
+        blocks = re.findall(r':\s*(\d+)\s*:\s*(\d+)\s*', line)
         # print 'Slice:'
         for block in blocks:
             # print block
@@ -582,7 +582,7 @@ def GetWeights(fp):
     # 3) This matches a decimal number with one, or more digits:
     #   \d+
     #
-    pattern = '(-?\ *[0-9]+\.?[0-9]*(?:[Ee]\ *-?\ *[0-9]+)?)\s(\d+)'
+    pattern = r'(-?\ *[0-9]+\.?[0-9]*(?:[Ee]\ *-?\ *[0-9]+)?)\s(\d+)'
 
     weight_dict = {}
     for line in ensure_string(fp.readlines()):
@@ -592,7 +592,7 @@ def GetWeights(fp):
         # without the decimal char '.'.  This should be the weight of '1'.
         #
         if not field:
-            field = re.match('(\d)\s(\d)', line)
+            field = re.match(r'(\d)\s(\d)', line)
         if field:
             weight = float(field.group(1))
             region = int(field.group(2))
@@ -610,7 +610,7 @@ def GetSimpoints(fp):
 
     simp_dict = {}
     for line in ensure_string(fp.readlines()):
-        field = re.match('(\d+)\s(\d+)', line)
+        field = re.match(r'(\d+)\s(\d+)', line)
         if field:
             slice_num = int(field.group(1))
             region = int(field.group(2))
@@ -638,7 +638,7 @@ def GetRegionBBV(fp, slice_set):
     bb_freq = {}
 
     # List of lists of basic block vectors, each inner list contains the blocks for one of the
-    # representative regions. 
+    # representative regions.
     #
     region_bbv = []
 
@@ -669,7 +669,7 @@ def GetRegionBBV(fp, slice_set):
             sum += count
 
             # Add the number instructions for the current BB to total icount for
-            # this specific BB (bb_num_instr).  
+            # this specific BB (bb_num_instr).
             #
             bb_num_instr[bb] = bb_num_instr.get(bb, 0) + count
 
@@ -691,7 +691,7 @@ def GetRegionBBV(fp, slice_set):
 
     # import pdb;  pdb.set_trace()
 
-    # Read the basic block information at the end of the file if it exists. 
+    # Read the basic block information at the end of the file if it exists.
     #
     # import pdb;  pdb.set_trace()
     all_bb = GetBlockIDs(fp)
@@ -709,8 +709,8 @@ def CheckRegions(simp_dict, weight_dict):
 
     @return no return value
     """
-    
-	# if weight regions dictionary is smaller then simpoints regions 
+
+	# if weight regions dictionary is smaller then simpoints regions
     # then add missing values with weight 0
     if len(simp_dict) > len(weight_dict):
         for simp_key in list(simp_dict.keys()):
@@ -758,7 +758,7 @@ def GenRegionCSV(options, fp_bbv, fp_simp, fp_weight):
 
     # Print region information
     #
-    if options.focus_thread == 'global': 
+    if options.focus_thread == 'global':
       tid = 'global'
     else:
       if int(options.focus_thread) != -1:
@@ -907,7 +907,7 @@ def ProjectFVFile(fp, proj_dim=15):
     #
     proj_matrix = {}
 
-    # List of lists which contains the result matrix. One element for each slice. 
+    # List of lists which contains the result matrix. One element for each slice.
     #
     result_matrix = []
 
@@ -1067,7 +1067,7 @@ def GetWeightedLDV(fp, num_dim=32):
     @return list of normalized, weighted LDV frequency vectors
     """
 
-    # List of lists which contains the result matrix. One element for each slice. 
+    # List of lists which contains the result matrix. One element for each slice.
     #
     result_matrix = []
 

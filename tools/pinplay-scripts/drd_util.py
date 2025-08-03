@@ -179,7 +179,7 @@ def CheckGdb(options, check_version=True):
     #
     line = stdout.split('\n', 1)[0]
     last = line.split()[-1]
-    float_pattern = '[1-9][0-9]*\.?[0-9]*'
+    float_pattern = r'[1-9][0-9]*\.?[0-9]*'
     f = re.search(float_pattern, last)
     version = f.group(0)
     major=int(version.split('.')[0])

@@ -611,7 +611,7 @@ def create_default_config():
   config['validate'] = True
   config['use_pinplay'] = False
   config['sniper_sde'] = False
-  config['binary_profile'] = False
+  config['binary_profile'] = True
 
   # Number of cores
   config['ncores'] = os.getenv('OMP_NUM_THREADS', '8')
@@ -725,7 +725,7 @@ Usage:
     [--no-validate]: Skip full program simulation and display only the sampled simulation result (used along with --force)
     [--no-flowcontrol]: Disable thread flowcontrol during profiling
     [--use-pinplay]: Use PinPlay instead of SDE for profiling
-    [--binary-profile]: Use the application binary for analysis instead of deterministic analysis with Pinballs
+    [--pinball-analysis]: Use deterministic analysis with pinballs instead of binary runs
     [--native]: Run the application natively (no sampling/simulation)
 
     Example:> ./run-looppoint.py -n 8 -i test -p demo-matrix-1 --force --no-validate
@@ -739,7 +739,7 @@ Usage:
   native_run = False
   validate = True
   try:
-    opts, args = getopt.getopt(sys.argv[1:], 'hn:i:w:p:c:', [ 'help', 'ncores=', 'input-class=', 'wait-policy=', 'program=', 'custom-cfg=', 'force', 'reuse-profile', 'reuse-fullsim', 'no-validate', 'no-flowcontrol', 'use-pinplay', 'binary-profile', 'native' ])
+    opts, args = getopt.getopt(sys.argv[1:], 'hn:i:w:p:c:', [ 'help', 'ncores=', 'input-class=', 'wait-policy=', 'program=', 'custom-cfg=', 'force', 'reuse-profile', 'reuse-fullsim', 'no-validate', 'no-flowcontrol', 'use-pinplay', 'pinball-analysis', 'native' ])
   except getopt.GetoptError as e:
     # print help information and exit:
     print(e)
@@ -771,8 +771,8 @@ Usage:
       update_config['flowcontrol'] = False
     if o == '--use-pinplay':
       update_config['use_pinplay'] = True
-    if o == '--binary-profile':
-      update_config['binary_profile'] = True
+    if o == '--pinball-analysis':
+      update_config['binary_profile'] = False
     if o == '--native':
       update_config['native_run'] = True
       native_run = True

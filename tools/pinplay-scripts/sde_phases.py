@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-#BEGIN_LEGAL 
-#BSD License 
+#BEGIN_LEGAL
+#BSD License
 #
 #Copyright (c)2022 Intel Corporation. All rights reserved.
 #
-#Redistribution and use in source and binary forms, with or without modification, 
+#Redistribution and use in source and binary forms, with or without modification,
 # are permitted provided that the following conditions are met:
 #
-#1. Redistributions of source code must retain the above copyright notice, 
+#1. Redistributions of source code must retain the above copyright notice,
 #   this list of conditions and the following disclaimer.
 #
-#2. Redistributions in binary form must reproduce the above copyright notice, 
-#   this list of conditions and the following disclaimer in the documentation 
+#2. Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
 #   and/or other materials provided with the distribution.
 #
-#3. Neither the name of the copyright holder nor the names of its contributors 
-#   may be used to endorse or promote products derived from this software without 
+#3. Neither the name of the copyright holder nor the names of its contributors
+#   may be used to endorse or promote products derived from this software without
 #   specific prior written permission.
 #
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
-# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
 # DISCLAIMED.
 # IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
@@ -63,7 +63,7 @@ class SDEPhases(phases.Phases):
 
     ###################################################################
     #
-    # Methods to generate the traceinfo files. 
+    # Methods to generate the traceinfo files.
     #
     ###################################################################
 
@@ -233,7 +233,7 @@ class SDEPhases(phases.Phases):
                         return -1
             msg.PrintMsg('Expected trace count: %d\n' % (len(cluster_info)))
 
-            # Print the number of actual traces in the LIT directory and the names. 
+            # Print the number of actual traces in the LIT directory and the names.
             #
             # import pdb;  pdb.set_trace()
             if not options.list:
@@ -401,18 +401,18 @@ class SDEPhases(phases.Phases):
             # Print details about the various sections in the pinball.
             #
             msg.PrintMsg('           Warmup count:        ' +
-                         locale.format('%14d', warmup, True))
+                         locale.format_string('%14d', warmup))
             msg.PrintMsg('           Prolog count:        ' +
-                         locale.format('%14d', prolog, True))
-            msg.PrintMsg('           Actual region count: ' + locale.format('%14d', calc_region, True) + \
-                '   (from file name: ' + locale.format('%d', file_region, True) + ')')
+                         locale.format_string('%14d', prolog))
+            msg.PrintMsg('           Actual region count: ' + locale.format_string('%14d', calc_region) + \
+                '   (from file name: ' + locale.format_string('%d', file_region) + ')')
             msg.PrintMsg('           Epilog count:        ' +
-                         locale.format('%14d', epilog, True))
+                         locale.format_string('%14d', epilog))
 
             msg.PrintMsg('           Total Instr count:   ' +
-                         locale.format('%14d', icount, True))
+                         locale.format_string('%14d', icount))
             msg.PrintMsg('           Number of threads:   ' +
-                         locale.format('%14d', nthreads, True))
+                         locale.format_string('%14d', nthreads))
             if config.focus_thread >= 0:
                 msg.PrintMsg('           Focus thread:                     ' +
                              str(config.focus_thread))
@@ -425,7 +425,7 @@ class SDEPhases(phases.Phases):
         #
         lit_dir = util.ChangeExtension(dirname, '.pp', '.lit')
 
-        # Several file names, with path, for pinball and LIT files.  
+        # Several file names, with path, for pinball and LIT files.
         #
         # Need to remove TID for the file name given to knob '-log:basename'
         # when generating LMAT files.  This must be done is because pinLIT will

@@ -3,6 +3,7 @@
 *.info.log
 *.info.cfg
 *.info.status
+pin-tool-log.txt
 lplib.pyc
 suites.pyc
 __pycache__

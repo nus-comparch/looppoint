@@ -48,12 +48,12 @@ sdekit:
 	fi
 
 looppoint: sdekit
-	make -C tools/src/Profiler TARGET=ia32
-	make -C tools/src/Profiler TARGET=intel64
-	make -C tools/src/Drivers TARGET=ia32
-	make -C tools/src/Drivers build TARGET=ia32
-	make -C tools/src/Drivers TARGET=intel64
-	make -C tools/src/Drivers build TARGET=intel64
+	make -C src/Profiler TARGET=ia32
+	make -C src/Profiler TARGET=intel64
+	make -C src/Drivers TARGET=ia32
+	make -C src/Drivers build TARGET=ia32
+	make -C src/Drivers TARGET=intel64
+	make -C src/Drivers build TARGET=intel64
 
 sniper: pinkit
 	@if [ ! -d "tools/sniper" ]; then \
@@ -77,8 +77,8 @@ clean:
 	rm -f *.pyc *.info.log  *.log
 	make -C apps/demo/dotproduct-omp clean
 	make -C apps/demo/matrix-omp clean
-	make -C tools/src/Profiler clean
-	make -C tools/src/Drivers clean
+	make -C src/Profiler clean
+	make -C src/Drivers clean
 	make -C tools/sniper clean
 
 distclean: clean
